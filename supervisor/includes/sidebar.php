@@ -22,6 +22,12 @@ $current_page = basename($_SERVER['PHP_SELF'], '.php');
             </a>
         </div>
         <div class="nav-item">
+            <a href="map.php" class="nav-link <?php echo $current_page === 'map' ? 'active' : ''; ?>" data-title="Live Map">
+                <i class="fas fa-map-marked-alt"></i>
+                <span>Live Map</span>
+            </a>
+        </div>
+        <div class="nav-item">
             <a href="review.php" class="nav-link <?php echo $current_page === 'review' ? 'active' : ''; ?>" data-title="Review Logs">
                 <i class="fas fa-clipboard-check"></i>
                 <span>Review Logs</span>
@@ -31,6 +37,18 @@ $current_page = basename($_SERVER['PHP_SELF'], '.php');
             <a href="students.php" class="nav-link <?php echo $current_page === 'students' ? 'active' : ''; ?>" data-title="My Students">
                 <i class="fas fa-users"></i>
                 <span>My Students</span>
+            </a>
+        </div>
+        <div class="nav-item">
+            <a href="alerts.php" class="nav-link <?php echo $current_page === 'alerts' ? 'active' : ''; ?>" data-title="Geofence Alerts">
+                <i class="fas fa-bell"></i>
+                <span>Geofence Alerts</span>
+            </a>
+        </div>
+        <div class="nav-item">
+            <a href="reports.php" class="nav-link <?php echo $current_page === 'reports' ? 'active' : ''; ?>" data-title="Reports">
+                <i class="fas fa-chart-bar"></i>
+                <span>Reports</span>
             </a>
         </div>
         <div class="nav-item">

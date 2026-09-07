@@ -3,6 +3,8 @@ session_start();
 require_once '../backend/config/db.php';
 require_once '../backend/config/session.php';
 require_once '../backend/models/LogEntry.php';
+require_once '../backend/models/Geofence.php';
+require_once '../backend/models/LocationLog.php';
 
 // Check if user is logged in and has student role
 if (!isLoggedIn() || !hasRole('student')) {
@@ -26,24 +28,48 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $heading = !empty($_POST['heading']) ? $_POST['heading'] : null;
         $speed = !empty($_POST['speed']) ? $_POST['speed'] : null;
         $date = $_POST['date'] ?? date('Y-m-d');
-        
+
         if (empty($activity)) {
             throw new Exception('Activity description is required');
         }
-        
+
         // Insert into database with proper error handling
         $stmt = $pdo->prepare("INSERT INTO log_entries (student_id, activity, date, latitude, longitude, location_address, status, accuracy, altitude, heading, speed, created_at) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, NOW())");
-        
+
         if (!$stmt->execute([$student_id, $activity, $date, $latitude, $longitude, $location_address, $accuracy, $altitude, $heading, $speed])) {
             throw new Exception('Database error: ' . implode(', ', $stmt->errorInfo()));
         }
-        
-        $message = "Log entry submitted successfully!";
+
+        // Run geofence check and log the location if coordinates were captured
+        $geofenceMsg = '';
+        if ($latitude !== null && $longitude !== null) {
+            $result = Geofence::checkStudentGeofence($pdo, $student_id, (float)$latitude, (float)$longitude);
+            if ($result['organization']) {
+                LocationLog::log($pdo, $student_id, (float)$latitude, (float)$longitude, $result['within']);
+                if ($result['within']) {
+                    $geofenceMsg = " Location verified: you are within the geofence ({$result['distance']}m from center).";
+                } else {
+                    $geofenceMsg = " WARNING: You are outside the geofence ({$result['distance']}m from center). Your supervisor has been notified.";
+                    // Notify supervisor about geofence breach
+                    $supervisorId = $pdo->query("SELECT supervisor_id FROM users WHERE id = " . (int)$student_id)->fetchColumn();
+                    if ($supervisorId) {
+                        $stmt2 = $pdo->prepare("INSERT INTO notifications (user_id, title, message, type) VALUES (?, ?, ?, 'geofence_breach')");
+                        $stmt2->execute([
+                            $supervisorId,
+                            'Geofence Breach Alert',
+                            $_SESSION['full_name'] . " submitted a log entry OUTSIDE the geofence for {$result['organization']['org_name']} ({$result['distance']}m away)."
+                        ]);
+                    }
+                }
+            }
+        }
+
+        $message = "Log entry submitted successfully!" . $geofenceMsg;
         $messageType = "success";
-        
+
         // Clear form data after successful submission
         $_POST = array();
-        
+
     } catch (Exception $e) {
         $message = "Error submitting log entry: " . $e->getMessage();
         $messageType = "error";

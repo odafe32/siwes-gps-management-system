@@ -52,6 +52,23 @@ try {
     $rejectedLogs = 0;
     $recentActivities = [];
 }
+
+// Get system-wide geofence breach alerts
+try {
+    $stmt = $pdo->query("
+        SELECT n.*, u.full_name as supervisor_name
+        FROM notifications n
+        LEFT JOIN users u ON u.id = n.user_id
+        WHERE n.type = 'geofence_breach'
+        ORDER BY n.created_at DESC LIMIT 10
+    ");
+    $systemBreaches = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $unreadSystemBreaches = array_filter($systemBreaches, function($a) { return !$a['is_read']; });
+    $systemBreachCount = count($unreadSystemBreaches);
+} catch (PDOException $e) {
+    $systemBreaches = [];
+    $systemBreachCount = 0;
+}
 ?>
 
 <!DOCTYPE html>
@@ -378,6 +395,38 @@ try {
                     <div class="stat-label">Rejected</div>
                 </div>
             </div>
+
+            <?php if ($systemBreachCount > 0): ?>
+            <!-- System-wide Geofence Breach Alerts -->
+            <div style="margin-bottom:2rem;">
+                <div class="card" style="border-left:5px solid #dc3545;border-radius:12px;overflow:hidden;">
+                    <div class="card-header" style="background:#dc3545;color:white;border:none;padding:1rem 1.25rem;">
+                        <h5 class="mb-0"><i class="fas fa-exclamation-triangle me-2"></i>System Geofence Breach Alerts (<?php echo $systemBreachCount; ?> unread)</h5>
+                    </div>
+                    <div class="card-body" style="padding:0;">
+                        <?php foreach ($systemBreaches as $alert): ?>
+                            <div style="padding:1rem 1.25rem;border-bottom:1px solid #f0f0f0;display:flex;justify-content:space-between;align-items:start;">
+                                <div>
+                                    <div style="font-weight:600;color:#dc3545;">
+                                        <i class="fas fa-map-marker-times me-1"></i><?php echo htmlspecialchars($alert['title']); ?>
+                                        <?php if (!$alert['is_read']): ?>
+                                            <span class="badge bg-danger ms-1">NEW</span>
+                                        <?php endif; ?>
+                                    </div>
+                                    <div style="color:#6c757d;font-size:0.9rem;margin-top:0.25rem;"><?php echo htmlspecialchars($alert['message']); ?></div>
+                                    <div style="color:#adb5bd;font-size:0.8rem;margin-top:0.25rem;">
+                                        <i class="fas fa-clock me-1"></i><?php echo date('M j, Y g:i A', strtotime($alert['created_at'])); ?>
+                                        <?php if ($alert['supervisor_name']): ?>
+                                            | <i class="fas fa-user-tie me-1"></i>Supervisor: <?php echo htmlspecialchars($alert['supervisor_name']); ?>
+                                        <?php endif; ?>
+                                    </div>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+            </div>
+            <?php endif; ?>
 
             <!-- Content Grid -->
             <div class="content-grid">

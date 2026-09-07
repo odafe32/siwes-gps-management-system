@@ -3,406 +3,246 @@ session_start();
 require_once '../backend/config/db.php';
 require_once '../backend/config/session.php';
 
-// Check if user is logged in and has admin/coordinator role
 if (!isLoggedIn() || (!hasRole('admin') && !hasRole('coordinator'))) {
-    header('Location: login.php');
+    header('Location: login.php?error=Access denied');
     exit();
 }
 
-// Get report statistics with error handling
-try {
-    // Total students
-    $stmt = $pdo->query("SELECT COUNT(*) as count FROM users WHERE role = 'student'");
-    $totalStudents = $stmt->fetch()['count'];
-    
-    // Total supervisors
-    $stmt = $pdo->query("SELECT COUNT(*) as count FROM users WHERE role = 'supervisor'");
-    $totalSupervisors = $stmt->fetch()['count'];
-    
-    // Total log entries
-    $stmt = $pdo->query("SELECT COUNT(*) as count FROM log_entries");
-    $totalLogs = $stmt->fetch()['count'];
-    
-    // Pending logs
-    $stmt = $pdo->query("SELECT COUNT(*) as count FROM log_entries WHERE status = 'pending'");
-    $pendingLogs = $stmt->fetch()['count'];
-    
-    // Approved logs
-    $stmt = $pdo->query("SELECT COUNT(*) as count FROM log_entries WHERE status = 'approved'");
-    $approvedLogs = $stmt->fetch()['count'];
-    
-    // Rejected logs
-    $stmt = $pdo->query("SELECT COUNT(*) as count FROM log_entries WHERE status = 'rejected'");
-    $rejectedLogs = $stmt->fetch()['count'];
-    
-} catch (PDOException $e) {
-    $error = "Database error: " . $e->getMessage();
-    // Set default values if database query fails
-    $totalStudents = 0;
-    $totalSupervisors = 0;
-    $totalLogs = 0;
-    $pendingLogs = 0;
-    $approvedLogs = 0;
-    $rejectedLogs = 0;
-}
-?>
+// Date range filter
+$startDate = $_GET['start_date'] ?? date('Y-m-01');
+$endDate = $_GET['end_date'] ?? date('Y-m-d');
+$selectedOrg = $_GET['org_id'] ?? '';
 
+// Handle CSV export
+if (isset($_GET['export']) && $_GET['export'] === 'csv') {
+    header('Content-Type: text/csv');
+    header('Content-Disposition: attachment; filename="system_attendance_report_' . $startDate . '_to_' . $endDate . '.csv"');
+
+    $output = fopen('php://output', 'w');
+    fputcsv($output, ['Student Name', 'Matric Number', 'Organization', 'Supervisor', 'Date', 'Check In', 'Check Out', 'Status']);
+
+    if ($selectedOrg) {
+        $stmt = $pdo->prepare("
+            SELECT u.full_name, u.matric_number, o.org_name, sup.full_name as supervisor_name, a.date, a.check_in_time, a.check_out_time, a.status
+            FROM attendance a
+            JOIN users u ON u.id = a.intern_id
+            LEFT JOIN organizations o ON o.id = u.organization_id
+            LEFT JOIN users sup ON sup.id = u.supervisor_id
+            WHERE a.date BETWEEN ? AND ? AND u.organization_id = ?
+            ORDER BY o.org_name, u.full_name, a.date DESC
+        ");
+        $stmt->execute([$startDate, $endDate, $selectedOrg]);
+    } else {
+        $stmt = $pdo->prepare("
+            SELECT u.full_name, u.matric_number, o.org_name, sup.full_name as supervisor_name, a.date, a.check_in_time, a.check_out_time, a.status
+            FROM attendance a
+            JOIN users u ON u.id = a.intern_id
+            LEFT JOIN organizations o ON o.id = u.organization_id
+            LEFT JOIN users sup ON sup.id = u.supervisor_id
+            WHERE a.date BETWEEN ? AND ?
+            ORDER BY o.org_name, u.full_name, a.date DESC
+        ");
+        $stmt->execute([$startDate, $endDate]);
+    }
+    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        fputcsv($output, $row);
+    }
+    fclose($output);
+    exit();
+}
+
+// Get all organizations for filter
+$orgs = $pdo->query("SELECT id, org_name FROM organizations ORDER BY org_name")->fetchAll(PDO::FETCH_ASSOC);
+
+// Get attendance data
+if ($selectedOrg) {
+    $stmt = $pdo->prepare("
+        SELECT u.full_name, u.matric_number, o.org_name, sup.full_name as supervisor_name, a.date, a.check_in_time, a.check_out_time, a.status
+        FROM attendance a
+        JOIN users u ON u.id = a.intern_id
+        LEFT JOIN organizations o ON o.id = u.organization_id
+        LEFT JOIN users sup ON sup.id = u.supervisor_id
+        WHERE a.date BETWEEN ? AND ? AND u.organization_id = ?
+        ORDER BY o.org_name, u.full_name, a.date DESC
+    ");
+    $stmt->execute([$startDate, $endDate, $selectedOrg]);
+} else {
+    $stmt = $pdo->prepare("
+        SELECT u.full_name, u.matric_number, o.org_name, sup.full_name as supervisor_name, a.date, a.check_in_time, a.check_out_time, a.status
+        FROM attendance a
+        JOIN users u ON u.id = a.intern_id
+        LEFT JOIN organizations o ON o.id = u.organization_id
+        LEFT JOIN users sup ON sup.id = u.supervisor_id
+        WHERE a.date BETWEEN ? AND ?
+        ORDER BY o.org_name, u.full_name, a.date DESC
+    ");
+    $stmt->execute([$startDate, $endDate]);
+}
+$records = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Summary stats
+if ($selectedOrg) {
+    $stmt = $pdo->prepare("
+        SELECT
+            COUNT(*) as total,
+            SUM(CASE WHEN a.status = 'Present' THEN 1 ELSE 0 END) as present,
+            SUM(CASE WHEN a.status = 'Outside Zone' THEN 1 ELSE 0 END) as outside,
+            SUM(CASE WHEN a.status = 'Absent' THEN 1 ELSE 0 END) as absent
+        FROM attendance a
+        JOIN users u ON u.id = a.intern_id
+        WHERE a.date BETWEEN ? AND ? AND u.organization_id = ?
+    ");
+    $stmt->execute([$startDate, $endDate, $selectedOrg]);
+} else {
+    $stmt = $pdo->prepare("
+        SELECT
+            COUNT(*) as total,
+            SUM(CASE WHEN a.status = 'Present' THEN 1 ELSE 0 END) as present,
+            SUM(CASE WHEN a.status = 'Outside Zone' THEN 1 ELSE 0 END) as outside,
+            SUM(CASE WHEN a.status = 'Absent' THEN 1 ELSE 0 END) as absent
+        FROM attendance a
+        WHERE a.date BETWEEN ? AND ?
+    ");
+    $stmt->execute([$startDate, $endDate]);
+}
+$summary = $stmt->fetch(PDO::FETCH_ASSOC);
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Reports - SIWES Logbook</title>
+    <title>Reports - SIWES Admin</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="assets/admin-styles.css">
-    
-    <!-- Additional reports-specific styles -->
     <style>
-        .report-card {
-            background: white;
-            border-radius: 12px;
-            padding: 1.5rem;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
-            border-left: 4px solid var(--primary-color);
-        }
-        
-        .report-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
-        }
-        
-        .report-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 1rem;
-        }
-        
-        .report-icon {
-            width: 50px;
-            height: 50px;
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.5rem;
-            color: white;
-        }
-        
-        .report-icon.primary {
-            background: var(--primary-color);
-        }
-        
-        .report-icon.success {
-            background: var(--success-color);
-        }
-        
-        .report-icon.warning {
-            background: var(--warning-color);
-        }
-        
-        .report-icon.danger {
-            background: var(--danger-color);
-        }
-        
-        .report-icon.info {
-            background: var(--info-color);
-        }
-        
-        .report-number {
-            font-size: 2rem;
-            font-weight: 700;
-            color: var(--primary-color);
-        }
-        
-        .report-label {
-            font-size: 0.875rem;
-            color: #6c757d;
-            font-weight: 500;
-        }
-        
-        .report-actions {
-            display: flex;
-            gap: 0.5rem;
-            margin-top: 1rem;
-        }
-        
-        .action-btn {
-            padding: 0.5rem 1rem;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            font-size: 0.875rem;
-            text-decoration: none;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-        
-        .view-btn {
-            background: var(--info-color);
-            color: white;
-        }
-        
-        .view-btn:hover {
-            background: #138496;
-            color: white;
-        }
-        
-        .download-btn {
-            background: var(--success-color);
-            color: white;
-        }
-        
-        .download-btn:hover {
-            background: #218838;
-            color: white;
-        }
-        
-        .reports-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 1.5rem;
-        }
-        
-        @media (max-width: 768px) {
-            .reports-grid {
-                grid-template-columns: 1fr;
-            }
-        }
+        .report-card { background: white; border-radius: 12px; padding: 1.5rem; box-shadow: 0 2px 10px rgba(0,0,0,0.06); margin-bottom: 1.5rem; }
+        .stat-card { background: white; border-radius: 10px; padding: 1rem; text-align: center; box-shadow: 0 2px 10px rgba(0,0,0,0.06); }
+        .stat-card .num { font-size: 1.75rem; font-weight: 700; }
+        .stat-card .lbl { font-size: 0.8rem; color: #6c757d; text-transform: uppercase; }
+        .stat-present .num { color: #28a745; }
+        .stat-outside .num { color: #ffc107; }
+        .stat-absent .num { color: #dc3545; }
+        .stat-total .num { color: var(--primary-color); }
+        .report-table { background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.06); }
+        .report-table th { background: var(--primary-color); color: white; font-size: 0.85rem; padding: 0.75rem; }
+        .report-table td { padding: 0.65rem; border-bottom: 1px solid #f0f0f0; font-size: 0.9rem; }
+        .report-table tr:last-child td { border-bottom: none; }
+        .status-badge { font-size: 0.75rem; padding: 0.2rem 0.6rem; border-radius: 4px; font-weight: 600; }
+        .badge-present { background: rgba(40,167,69,0.15); color: #28a745; }
+        .badge-outside { background: rgba(255,193,7,0.15); color: #856404; }
+        .badge-absent { background: rgba(220,53,69,0.15); color: #dc3545; }
+        .btn-export { background: #28a745; color: white; border: none; padding: 0.5rem 1.25rem; border-radius: 8px; font-weight: 600; text-decoration: none; display: inline-flex; align-items: center; }
+        .btn-export:hover { color: white; background: #218838; text-decoration: none; }
+        .form-control { border-radius: 8px; border: 2px solid #e9ecef; }
+        .form-control:focus { border-color: var(--primary-color); }
     </style>
 </head>
 <body>
-    <!-- Include Sidebar -->
     <?php include 'includes/sidebar.php'; ?>
-    
-    <!-- Main Content -->
+
     <div class="main-content">
-        <!-- Header -->
-        <header class="header">
-            <div class="header-left">
-                <button class="menu-toggle" id="menuToggle">
-                    <i class="fas fa-bars"></i>
-            </button>
-                <h1 class="page-title">Reports</h1>
-            </div>
-            
-            <div class="user-menu">
-                <div class="user-info">
-                    <div class="user-name"><?php echo htmlspecialchars($_SESSION['name'] ?? 'Admin'); ?></div>
-                    <div class="user-role"><?php echo ucfirst($_SESSION['role'] ?? 'admin'); ?></div>
-                </div>
-                <button class="logout-btn" onclick="logout()">
-                    <i class="fas fa-sign-out-alt"></i>
-                    Logout
-                </button>
-            </div>
-        </header>
-        
-        <!-- Page Content -->
+        <?php $pageTitle = 'Reports'; include 'includes/header.php'; ?>
+
         <div class="page-content">
-            <!-- Error Display -->
-            <?php if (isset($error)): ?>
-                <div class="alert alert-danger fade-in-up">
-                    <i class="fas fa-exclamation-triangle me-2"></i>
-                    <?php echo htmlspecialchars($error); ?>
+            <h2 style="color:var(--primary-color);font-weight:700;margin-bottom:0.5rem;">System Attendance Report</h2>
+            <p style="color:#6c757d;margin-bottom:1.5rem;">View and export attendance records across all organizations</p>
+
+            <!-- Filters -->
+            <div class="report-card">
+                <form method="GET" class="row g-3 align-items-end">
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold">Start Date</label>
+                        <input type="date" class="form-control" name="start_date" value="<?php echo $startDate; ?>">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold">End Date</label>
+                        <input type="date" class="form-control" name="end_date" value="<?php echo $endDate; ?>">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold">Organization (optional)</label>
+                        <select class="form-control" name="org_id">
+                            <option value="">All Organizations</option>
+                            <?php foreach ($orgs as $o): ?>
+                                <option value="<?php echo $o['id']; ?>" <?php echo $selectedOrg == $o['id'] ? 'selected' : ''; ?>>
+                                    <?php echo htmlspecialchars($o['org_name']); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="col-md-3 d-flex gap-2">
+                        <button type="submit" class="btn btn-primary flex-fill"><i class="fas fa-search me-1"></i>Generate</button>
+                        <a href="reports.php?export=csv&start_date=<?php echo $startDate; ?>&end_date=<?php echo $endDate; ?>&org_id=<?php echo $selectedOrg; ?>" class="btn-export">
+                            <i class="fas fa-download me-1"></i>CSV
+                        </a>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Summary -->
+            <div class="row g-3 mb-4">
+                <div class="col-6 col-md-3"><div class="stat-card stat-total"><div class="num"><?php echo $summary['total'] ?: 0; ?></div><div class="lbl">Total Records</div></div></div>
+                <div class="col-6 col-md-3"><div class="stat-card stat-present"><div class="num"><?php echo $summary['present'] ?: 0; ?></div><div class="lbl">Present</div></div></div>
+                <div class="col-6 col-md-3"><div class="stat-card stat-outside"><div class="num"><?php echo $summary['outside'] ?: 0; ?></div><div class="lbl">Outside Zone</div></div></div>
+                <div class="col-6 col-md-3"><div class="stat-card stat-absent"><div class="num"><?php echo $summary['absent'] ?: 0; ?></div><div class="lbl">Absent</div></div></div>
+            </div>
+
+            <!-- Table -->
+            <h5 style="color:var(--primary-color);margin-bottom:1rem;">
+                <i class="fas fa-table me-2"></i>Attendance Records
+                (<?php echo date('M j, Y', strtotime($startDate)); ?> — <?php echo date('M j, Y', strtotime($endDate)); ?>)
+            </h5>
+
+            <?php if (count($records) > 0): ?>
+                <div class="table-responsive report-table">
+                    <table class="table mb-0">
+                        <thead>
+                            <tr>
+                                <th>Student</th>
+                                <th>Matric</th>
+                                <th>Organization</th>
+                                <th>Supervisor</th>
+                                <th>Date</th>
+                                <th>Check In</th>
+                                <th>Check Out</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($records as $r): ?>
+                                <tr>
+                                    <td><strong><?php echo htmlspecialchars($r['full_name']); ?></strong></td>
+                                    <td><?php echo htmlspecialchars($r['matric_number'] ?? '—'); ?></td>
+                                    <td><?php echo htmlspecialchars($r['org_name'] ?? '—'); ?></td>
+                                    <td><?php echo htmlspecialchars($r['supervisor_name'] ?? '—'); ?></td>
+                                    <td><?php echo date('M j, Y', strtotime($r['date'])); ?></td>
+                                    <td><?php echo $r['check_in_time'] ?: '—'; ?></td>
+                                    <td><?php echo $r['check_out_time'] ?: '—'; ?></td>
+                                    <td>
+                                        <?php
+                                        $cls = 'badge-absent';
+                                        if ($r['status'] === 'Present') $cls = 'badge-present';
+                                        elseif ($r['status'] === 'Outside Zone') $cls = 'badge-outside';
+                                        ?>
+                                        <span class="status-badge <?php echo $cls; ?>"><?php echo htmlspecialchars($r['status']); ?></span>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            <?php else: ?>
+                <div class="report-card text-center" style="color:#6c757d;padding:2rem;">
+                    <i class="fas fa-folder-open" style="font-size:2.5rem;opacity:0.3;"></i>
+                    <p style="margin-top:0.5rem;">No attendance records found for this date range.</p>
                 </div>
             <?php endif; ?>
-            
-            <!-- Page Header -->
-            <div class="page-header">
-                <div>
-                    <h2 class="mb-1">Reports & Analytics</h2>
-                    <p class="text-muted mb-0">Generate and view system reports</p>
-                </div>
-            </div>
-            
-            <!-- Reports Grid -->
-            <div class="reports-grid">
-                <!-- User Statistics Report -->
-                <div class="report-card fade-in-up">
-                    <div class="report-header">
-                        <div class="report-icon primary">
-                            <i class="fas fa-users"></i>
-                    </div>
-                        <div class="report-number"><?php echo $totalStudents + $totalSupervisors; ?></div>
-                    </div>
-                    <div class="report-label">Total Users</div>
-                    <div class="report-actions">
-                        <a href="#" class="action-btn view-btn" onclick="generateUserReport()">
-                            <i class="fas fa-eye"></i>
-                            View
-                        </a>
-                        <a href="#" class="action-btn download-btn" onclick="downloadUserReport()">
-                            <i class="fas fa-download"></i>
-                            Download
-                        </a>
-            </div>
-        </div>
-
-                <!-- Log Entries Report -->
-                <div class="report-card fade-in-up">
-                    <div class="report-header">
-                        <div class="report-icon info">
-                            <i class="fas fa-clipboard-list"></i>
-                        </div>
-                        <div class="report-number"><?php echo $totalLogs; ?></div>
-                    </div>
-                    <div class="report-label">Total Log Entries</div>
-                    <div class="report-actions">
-                        <a href="#" class="action-btn view-btn" onclick="generateLogReport()">
-                            <i class="fas fa-eye"></i>
-                            View
-                        </a>
-                        <a href="#" class="action-btn download-btn" onclick="downloadLogReport()">
-                            <i class="fas fa-download"></i>
-                            Download
-                        </a>
-                </div>
-            </div>
-            
-                <!-- Pending Reviews Report -->
-                <div class="report-card fade-in-up">
-                    <div class="report-header">
-                        <div class="report-icon warning">
-                            <i class="fas fa-clock"></i>
-                        </div>
-                        <div class="report-number"><?php echo $pendingLogs; ?></div>
-                    </div>
-                    <div class="report-label">Pending Reviews</div>
-                    <div class="report-actions">
-                        <a href="#" class="action-btn view-btn" onclick="generatePendingReport()">
-                            <i class="fas fa-eye"></i>
-                            View
-                        </a>
-                        <a href="#" class="action-btn download-btn" onclick="downloadPendingReport()">
-                            <i class="fas fa-download"></i>
-                            Download
-                        </a>
-            </div>
-        </div>
-
-                <!-- Approved Reports -->
-                <div class="report-card fade-in-up">
-                    <div class="report-header">
-                        <div class="report-icon success">
-                            <i class="fas fa-check-circle"></i>
-                        </div>
-                        <div class="report-number"><?php echo $approvedLogs; ?></div>
-                    </div>
-                    <div class="report-label">Approved Entries</div>
-                    <div class="report-actions">
-                        <a href="#" class="action-btn view-btn" onclick="generateApprovedReport()">
-                            <i class="fas fa-eye"></i>
-                            View
-                        </a>
-                        <a href="#" class="action-btn download-btn" onclick="downloadApprovedReport()">
-                            <i class="fas fa-download"></i>
-                            Download
-                        </a>
-                </div>
-            </div>
-            
-                <!-- Rejected Reports -->
-                <div class="report-card fade-in-up">
-                    <div class="report-header">
-                        <div class="report-icon danger">
-                            <i class="fas fa-times-circle"></i>
-                        </div>
-                        <div class="report-number"><?php echo $rejectedLogs; ?></div>
-                    </div>
-                    <div class="report-label">Rejected Entries</div>
-                    <div class="report-actions">
-                        <a href="#" class="action-btn view-btn" onclick="generateRejectedReport()">
-                            <i class="fas fa-eye"></i>
-                            View
-                        </a>
-                        <a href="#" class="action-btn download-btn" onclick="downloadRejectedReport()">
-                            <i class="fas fa-download"></i>
-                            Download
-                        </a>
-                    </div>
-                </div>
-                
-                <!-- System Activity Report -->
-                <div class="report-card fade-in-up">
-                    <div class="report-header">
-                        <div class="report-icon primary">
-                            <i class="fas fa-chart-line"></i>
-                        </div>
-                        <div class="report-number">-</div>
-                        </div>
-                    <div class="report-label">System Activity</div>
-                    <div class="report-actions">
-                        <a href="#" class="action-btn view-btn" onclick="generateActivityReport()">
-                            <i class="fas fa-eye"></i>
-                            View
-                        </a>
-                        <a href="#" class="action-btn download-btn" onclick="downloadActivityReport()">
-                            <i class="fas fa-download"></i>
-                            Download
-                        </a>
-                    </div>
-                </div>
-            </div>
         </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="assets/admin-scripts.js"></script>
-    <script>
-        // Report generation functions
-        function generateUserReport() {
-            showToast('User report generation will be implemented in the next update', 'info');
-        }
-        
-        function downloadUserReport() {
-            showToast('User report download will be implemented in the next update', 'info');
-        }
-        
-        function generateLogReport() {
-            showToast('Log report generation will be implemented in the next update', 'info');
-        }
-        
-        function downloadLogReport() {
-            showToast('Log report download will be implemented in the next update', 'info');
-        }
-        
-        function generatePendingReport() {
-            showToast('Pending report generation will be implemented in the next update', 'info');
-        }
-        
-        function downloadPendingReport() {
-            showToast('Pending report download will be implemented in the next update', 'info');
-        }
-        
-        function generateApprovedReport() {
-            showToast('Approved report generation will be implemented in the next update', 'info');
-        }
-        
-        function downloadApprovedReport() {
-            showToast('Approved report download will be implemented in the next update', 'info');
-        }
-        
-        function generateRejectedReport() {
-            showToast('Rejected report generation will be implemented in the next update', 'info');
-        }
-        
-        function downloadRejectedReport() {
-            showToast('Rejected report download will be implemented in the next update', 'info');
-        }
-        
-        function generateActivityReport() {
-            showToast('Activity report generation will be implemented in the next update', 'info');
-        }
-        
-        function downloadActivityReport() {
-            showToast('Activity report download will be implemented in the next update', 'info');
-        }
-    </script>
 </body>
-</html> 
+</html>

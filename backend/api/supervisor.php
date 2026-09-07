@@ -20,11 +20,38 @@ $data = json_decode(file_get_contents('php://input'), true);
 if ($data['action'] === 'dashboard') {
     $user = User::findById($pdo, $_SESSION['user_id']);
     $pendingLogs = LogEntry::getPendingForSupervisor($pdo, $_SESSION['user_id']);
-    
+    $pendingCount = count($pendingLogs);
+
+    // Approved logs count
+    $stmt = $pdo->prepare("
+        SELECT COUNT(*) as cnt FROM log_entries le
+        JOIN users u ON u.id = le.student_id
+        WHERE u.supervisor_id = ? AND le.status = 'approved'
+    ");
+    $stmt->execute([$_SESSION['user_id']]);
+    $approvedCount = $stmt->fetch()['cnt'];
+
+    // Rejected logs count
+    $stmt = $pdo->prepare("
+        SELECT COUNT(*) as cnt FROM log_entries le
+        JOIN users u ON u.id = le.student_id
+        WHERE u.supervisor_id = ? AND le.status = 'rejected'
+    ");
+    $stmt->execute([$_SESSION['user_id']]);
+    $rejectedCount = $stmt->fetch()['cnt'];
+
+    // Student count
+    $stmt = $pdo->prepare("SELECT COUNT(*) as cnt FROM users WHERE supervisor_id = ? AND role = 'student'");
+    $stmt->execute([$_SESSION['user_id']]);
+    $studentCount = $stmt->fetch()['cnt'];
+
     echo json_encode([
         'success' => true,
-        'name' => $user['username'],
-        'pending_logs' => $pendingLogs
+        'name' => $user['username'] ?? $user['full_name'] ?? 'Supervisor',
+        'pending_logs' => $pendingLogs,
+        'approved_count' => $approvedCount,
+        'rejected_count' => $rejectedCount,
+        'student_count' => $studentCount
     ]);
     exit;
 }

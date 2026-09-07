@@ -1,6 +1,6 @@
 # Project Roadmap: SIWES Intern Tracking System using GPS Technology
 
-> This document tracks what the project **is** (per the thesis), what the codebase **currently has**, and what we **need to build** to align the two. Updated September 2026.
+> This document tracks what the project **is** (per the thesis), what the codebase **currently has**, and the **phased plan** to align the two. Updated September 2026.
 
 ---
 
@@ -52,99 +52,116 @@
 
 ---
 
-## 3. What's Missing (the gaps)
+## 3. Implementation Phases
 
-### Gap 1: No Organizations table with geofence data
-**Thesis (Table 3.2):** `organizations` table with `org_name`, `address`, `geo_latitude`, `geo_longitude`, `geofence_radius_m` (default 100m).
+### PHASE 1: Database Foundation & Geofence Engine
+> **Goal:** Create the missing database tables and the core geofencing logic.
+> **Status:** Not started
 
-**Code:** Workplace info is stored on each student's `users` row. No separate organizations table. No geofence radius.
+**Tasks:**
+- [ ] 1.1 Create `organizations` table (org_name, address, geo_latitude, geo_longitude, geofence_radius_m)
+- [ ] 1.2 Add `organization_id` column to `users` table (links students to their org)
+- [ ] 1.3 Add `supervisor_type` column to `users` table (ENUM: industry, school)
+- [ ] 1.4 Migrate existing workplace data from `users` to `organizations`
+- [ ] 1.5 Create `location_logs` table (intern_id, latitude, longitude, captured_at, in_geofence)
+- [ ] 1.6 Create `attendance` table (intern_id, date, check_in_time, check_out_time, status)
+- [ ] 1.7 Add `geofence_breach` to `notifications` type enum
+- [ ] 1.8 Create `backend/models/Geofence.php` — Haversine distance + isWithinGeofence
+- [ ] 1.9 Create `backend/models/Organization.php` — CRUD for organizations
+- [ ] 1.10 Create `backend/models/LocationLog.php` — log GPS pings with geofence result
+- [ ] 1.11 Create `backend/models/Attendance.php` — check-in/check-out logic
+- [ ] 1.12 Update `db.php` to create all new tables on first run
+- [ ] 1.13 Add test organization with geofence coordinates
 
-**To do:**
-- [ ] Create `organizations` table
-- [ ] Add `organization_id` foreign key to `users` (for students)
-- [ ] Migrate existing workplace data from `users` to `organizations`
-- [ ] Add admin page to manage organizations and set geofence boundaries
+**Deliverable:** All database tables exist, all models work, geofence engine can calculate distance and determine inside/outside.
 
-### Gap 2: No geofencing engine (Haversine distance check)
-**Thesis (Section 3.5):** When a student submits GPS coordinates, the system compares them against the organization's geofence boundary using the Haversine formula to determine if they're inside or outside.
+---
 
-**Code:** Nothing. GPS coordinates are stored but never checked.
+### PHASE 2: Admin Organization Management
+> **Goal:** Admin can create/edit organizations and set geofence boundaries on a map.
+> **Status:** Not started
 
-**To do:**
-- [ ] Create `backend/models/Geofence.php` class
-- [ ] Implement `haversineDistance($lat1, $lng1, $lat2, $lng2)` — returns distance in meters
-- [ ] Implement `isWithinGeofence($userLat, $userLng, $orgLat, $orgLng, $radiusM)` — returns boolean
-- [ ] Call the geofence check when a student submits a log entry
-- [ ] Call the geofence check when a student checks in
+**Tasks:**
+- [ ] 2.1 Create `admin/organizations.php` — list all organizations
+- [ ] 2.2 Create `admin/organization-add.php` — add new organization with map picker
+- [ ] 2.3 Create `admin/organization-edit.php` — edit organization geofence
+- [ ] 2.4 Use Leaflet.js map for picking geofence center + radius
+- [ ] 2.5 Add "Organizations" link to admin sidebar
+- [ ] 2.6 Assign students to organizations from admin student management
+- [ ] 2.7 Set supervisor type (industry/school) from admin supervisor management
 
-### Gap 3: No Attendance table with check-in/check-out
-**Thesis (Table 3.4):** `attendance` table with `intern_id`, `date`, `check_in_time`, `check_out_time`, `status` (Present / Absent / Outside Zone).
+**Deliverable:** Admin can manage organizations, set geofence boundaries visually on a map, and assign students/supervisors to organizations.
 
-**Code:** No attendance tracking at all.
+---
 
-**To do:**
-- [ ] Create `attendance` table
-- [ ] Create `backend/models/Attendance.php` class
-- [ ] Implement check-in logic: when student's GPS is inside geofence, record check-in time
-- [ ] Implement check-out logic: when student leaves or day ends, record check-out time
-- [ ] Set status: Present (inside geofence during work hours), Absent (no check-in), Outside Zone (left geofence during work hours)
-- [ ] Add student attendance view (see own attendance record)
-- [ ] Add supervisor attendance view (see assigned students' attendance)
+### PHASE 3: Student Check-in/Check-out & Attendance
+> **Goal:** Students can check in with GPS verification and the system records attendance.
+> **Status:** Not started
 
-### Gap 4: No Location Logs table with in_geofence flag
-**Thesis (Table 3.3):** `location_logs` table with `intern_id`, `latitude`, `longitude`, `captured_at`, `in_geofence` (boolean).
+**Tasks:**
+- [ ] 3.1 Create `student/attendance.php` — check-in/check-out page
+- [ ] 3.2 Capture GPS coordinates on check-in using HTML5 Geolocation
+- [ ] 3.3 Run geofence check on check-in (call Geofence::isWithinGeofence)
+- [ ] 3.4 Record attendance: Present (inside geofence), Outside Zone (outside geofence)
+- [ ] 3.5 Log every GPS submission to `location_logs` with `in_geofence` result
+- [ ] 3.6 Implement check-out logic
+- [ ] 3.7 Show student their current attendance status
+- [ ] 3.8 Show student their attendance history (calendar/list view)
+- [ ] 3.9 Add "Attendance" link to student sidebar
+- [ ] 3.10 Wire geofence check into existing log entry submission too
 
-**Code:** `log_entries` stores lat/long but only on manual submission. No `in_geofence` flag. No periodic tracking.
+**Deliverable:** Students can check in/out with GPS, system verifies they're inside the geofence, attendance is recorded, location is logged.
 
-**To do:**
-- [ ] Create `location_logs` table
-- [ ] Create `backend/models/LocationLog.php` class
-- [ ] Log every GPS submission (from log entry or check-in) to `location_logs` with the `in_geofence` result
-- [ ] Add supervisor view to see a student's location history
+---
 
-### Gap 5: No geofence breach alerts
-**Thesis (Functional Requirements):** "Send real-time alerts to supervisors when an intern leaves the geofenced area during working hours."
+### PHASE 4: Geofence Breach Alerts
+> **Goal:** Supervisors get notified when a student leaves the geofence during working hours.
+> **Status:** Not started
 
-**Code:** `notifications` table exists but nothing triggers breach alerts.
+**Tasks:**
+- [ ] 4.1 Define working hours (e.g., 8:00 AM - 5:00 PM, configurable)
+- [ ] 4.2 When geofence check returns "outside" during working hours, create notification for supervisor
+- [ ] 4.3 Add `geofence_breach` notification type with distinctive styling
+- [ ] 4.4 Show breach alerts prominently on supervisor dashboard
+- [ ] 4.5 Show breach alerts on admin dashboard
+- [ ] 4.6 Add breach alert count to header notification badge
 
-**To do:**
-- [ ] When geofence check returns "outside zone" during working hours, insert a notification for the student's supervisor
-- [ ] Add notification type `geofence_breach` to the enum
-- [ ] Show breach alerts prominently on supervisor dashboard
+**Deliverable:** When a student is outside the geofence during work hours, their supervisor gets an alert automatically.
 
-### Gap 6: No distinction between industry-based and school-based supervisors
-**Thesis (Table 3.5):** Supervisors have a `role` column: "Industry-based or School-based."
+---
 
-**Code:** Single `supervisor` role, no subtype.
+### PHASE 5: Supervisor Map Dashboard & Monitoring
+> **Goal:** Supervisors can see their students' locations on a map in real time.
+> **Status:** Not started
 
-**To do:**
-- [ ] Add `supervisor_type` column to `users` (ENUM: `industry`, `school`) for supervisor-role users
-- [ ] Industry supervisors linked to an organization; school supervisors linked to an institution
-- [ ] Update admin supervisor management page to set supervisor type
+**Tasks:**
+- [ ] 5.1 Add map view to supervisor dashboard using Leaflet.js + OpenStreetMap
+- [ ] 5.2 Show each assigned student's latest location as a marker
+- [ ] 5.3 Show the organization geofence as a circle on the map
+- [ ] 5.4 Color-code markers: green (inside geofence), red (outside)
+- [ ] 5.5 Add student location history view (trail of GPS pings for a date)
+- [ ] 5.6 Add attendance summary view (which students checked in today)
+- [ ] 5.7 Add breach alert feed to supervisor dashboard
+- [ ] 5.8 Auto-refresh map every 30 seconds
 
-### Gap 7: No supervisor dashboard with map view
-**Thesis (Use Case, Section 3.6):** School-based supervisors view an intern's real-time location on a map, receive breach alerts, and generate attendance/movement reports.
+**Deliverable:** Supervisor dashboard shows a live map with student locations, geofence circles, and breach alerts.
 
-**Code:** Supervisor pages show pending logs and assigned students. No map, no attendance view, no breach alerts.
+---
 
-**To do:**
-- [ ] Add a map view to supervisor dashboard using Leaflet.js + OpenStreetMap (free, no API key)
-- [ ] Show each assigned student's latest location as a marker
-- [ ] Show the organization geofence as a circle on the map
-- [ ] Color-code markers: green (inside geofence), red (outside)
-- [ ] Add attendance report view (daily/weekly summary of check-ins)
-- [ ] Add movement report view (location history for a date range)
+### PHASE 6: Reporting & Analytics
+> **Goal:** Supervisors and admins can generate attendance and movement reports.
+> **Status:** Not started
 
-### Gap 8: No student check-in/check-out interface
-**Thesis (Section 3.5, Flowchart 3.3):** Students open the app, the app captures GPS, and the system determines check-in/check-out status.
+**Tasks:**
+- [ ] 6.1 Create `supervisor/reports.php` — attendance report for assigned students
+- [ ] 6.2 Create `admin/reports.php` — system-wide attendance report
+- [ ] 6.3 Daily attendance summary (present/absent/outside zone counts)
+- [ ] 6.4 Weekly attendance summary per student
+- [ ] 6.5 Movement report (location history for a date range)
+- [ ] 6.6 Export reports as CSV/PDF
+- [ ] 6.7 Add date range filter to all reports
 
-**Code:** Students can only submit log entries. No dedicated check-in/check-out flow.
-
-**To do:**
-- [ ] Create `student/attendance.php` page with a check-in button
-- [ ] On check-in, capture GPS, run geofence check, record attendance
-- [ ] Show current status (Checked In / Outside Zone / Not Checked In)
-- [ ] Add check-out button at end of day
+**Deliverable:** Supervisors and admins can generate and export attendance and movement reports.
 
 ---
 
@@ -158,27 +175,30 @@
 - `evaluations` (id, student_id, supervisor_id, evaluation_type, period_reference, punctuality_rating, technical_skill_rating, communication_rating, attitude_rating, final_recommendation, digital_signature, comments, created_at, updated_at)
 - `notifications` (id, user_id, title, message, type, is_read, created_at)
 
-### Tables to add
-- `organizations` (organization_id, org_name, address, geo_latitude, geo_longitude, geofence_radius_m)
-- `attendance` (attendance_id, intern_id, date, check_in_time, check_out_time, status)
+### Tables to add (Phase 1)
+- `organizations` (organization_id, org_name, address, geo_latitude, geo_longitude, geofence_radius_m, created_at)
+- `attendance` (attendance_id, intern_id, date, check_in_time, check_out_time, status, created_at)
 - `location_logs` (log_id, intern_id, latitude, longitude, captured_at, in_geofence)
 
-### Columns to add to `users`
+### Columns to add to `users` (Phase 1)
 - `organization_id` (INT, foreign key to organizations) — for students
 - `supervisor_type` (ENUM: `industry`, `school`) — for supervisors
 
+### Notification type enum update (Phase 1)
+- Add `geofence_breach` to the existing `type` ENUM on `notifications`
+
 ---
 
-## 5. Build Order (recommended sequence)
+## 5. Phase Summary
 
-1. **Organizations table + admin management page** — foundation for geofencing
-2. **Geofence class (Haversine)** — the core engine
-3. **Location logs table + model** — records every GPS ping with geofence result
-4. **Attendance table + model + student check-in page** — the core feature
-5. **Geofence breach alerts** — notifications when student leaves during work hours
-6. **Supervisor dashboard with map view** — visualize locations and geofences
-7. **Supervisor type column** — distinguish industry vs school supervisors
-8. **Attendance and movement reports** — for supervisors and coordinators
+| Phase | Name | Key Deliverable | Depends on |
+|---|---|---|---|
+| 1 | Database Foundation & Geofence Engine | All tables + models + Haversine engine | Nothing |
+| 2 | Admin Organization Management | Admin can manage orgs + geofences on a map | Phase 1 |
+| 3 | Student Check-in/Check-out & Attendance | Students check in with GPS verification | Phase 1, 2 |
+| 4 | Geofence Breach Alerts | Supervisors get auto-alerts on breach | Phase 1, 3 |
+| 5 | Supervisor Map Dashboard & Monitoring | Live map with student locations + geofences | Phase 1, 2, 3, 4 |
+| 6 | Reporting & Analytics | Attendance and movement reports, exportable | Phase 1, 3, 5 |
 
 ---
 
@@ -212,3 +232,4 @@
 - **No framework:** plain PHP with PDO
 - **No Composer dependencies yet**
 - **Map library:** Leaflet.js + OpenStreetMap (planned, free, no API key)
+- **Server:** `php -S localhost:8080 -t .`

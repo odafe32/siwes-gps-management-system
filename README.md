@@ -41,7 +41,7 @@ Database and tables created successfully with test data!
 ### Step 3: Start the PHP development server
 
 ```bash
-php -S localhost:8080 -t .
+php -S localhost:8080 -t "C:\Users\USER\OneDrive\Documents\SIWES" .
 ```
 
 > **Note:** If port 8080 is already in use, pick another port like `8081` or `9000`.

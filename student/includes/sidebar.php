@@ -28,6 +28,12 @@ $current_page = basename($_SERVER['PHP_SELF'], '.php');
             </a>
         </div>
         <div class="nav-item">
+            <a href="attendance.php" class="nav-link <?php echo $current_page === 'attendance' ? 'active' : ''; ?>" data-title="Attendance">
+                <i class="fas fa-clock"></i>
+                <span>Attendance</span>
+            </a>
+        </div>
+        <div class="nav-item">
             <a href="history.php" class="nav-link <?php echo $current_page === 'history' ? 'active' : ''; ?>" data-title="Log History">
                 <i class="fas fa-history"></i>
                 <span>Log History</span>

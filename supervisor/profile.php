@@ -263,7 +263,7 @@ try {
         
         // Logout function
         function logout() {
-            window.location.href = '../backend/auth/logout.php';
+            window.location.href = '../backend/api/auth.php?action=logout';
         }
     </script>
 </body>

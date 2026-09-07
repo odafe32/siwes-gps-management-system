@@ -12,6 +12,59 @@ if (!isLoggedIn() || !hasRole('supervisor')) {
 // Get user data
 $user_id = $_SESSION['user_id'];
 $user_name = $_SESSION['name'] ?? 'Supervisor';
+
+// Get geofence breach alerts for this supervisor
+$stmt = $pdo->prepare("
+    SELECT n.*, u.full_name as student_name
+    FROM notifications n
+    LEFT JOIN users u ON u.id = ?
+    WHERE n.user_id = ? AND n.type = 'geofence_breach'
+    ORDER BY n.created_at DESC LIMIT 10
+");
+$stmt->execute([$user_id, $user_id]);
+$breachAlerts = $stmt->fetchAll(PDO::FETCH_ASSOC);
+$unreadBreaches = array_filter($breachAlerts, function($a) { return !$a['is_read']; });
+$breachCount = count($unreadBreaches);
+
+// Get dashboard stats directly from DB (no AJAX dependency)
+$stmt = $pdo->prepare("SELECT COUNT(*) as cnt FROM users WHERE supervisor_id = ? AND role = 'student'");
+$stmt->execute([$user_id]);
+$statStudentCount = $stmt->fetch()['cnt'];
+
+$stmt = $pdo->prepare("
+    SELECT COUNT(*) as cnt FROM log_entries le
+    JOIN users u ON u.id = le.student_id
+    WHERE u.supervisor_id = ? AND le.status = 'pending'
+");
+$stmt->execute([$user_id]);
+$statPendingCount = $stmt->fetch()['cnt'];
+
+$stmt = $pdo->prepare("
+    SELECT COUNT(*) as cnt FROM log_entries le
+    JOIN users u ON u.id = le.student_id
+    WHERE u.supervisor_id = ? AND le.status = 'approved'
+");
+$stmt->execute([$user_id]);
+$statApprovedCount = $stmt->fetch()['cnt'];
+
+$stmt = $pdo->prepare("
+    SELECT COUNT(*) as cnt FROM log_entries le
+    JOIN users u ON u.id = le.student_id
+    WHERE u.supervisor_id = ? AND le.status = 'rejected'
+");
+$stmt->execute([$user_id]);
+$statRejectedCount = $stmt->fetch()['cnt'];
+
+// Get pending logs for display
+$stmt = $pdo->prepare("
+    SELECT le.*, u.full_name as student_name
+    FROM log_entries le
+    JOIN users u ON u.id = le.student_id
+    WHERE u.supervisor_id = ? AND le.status = 'pending'
+    ORDER BY le.created_at DESC LIMIT 10
+");
+$stmt->execute([$user_id]);
+$pendingLogsList = $stmt->fetchAll(PDO::FETCH_ASSOC);
 ?>
 
 <!DOCTYPE html>
@@ -70,7 +123,7 @@ $user_name = $_SESSION['name'] ?? 'Supervisor';
                                     <i class="fas fa-clock"></i>
                                 </div>
                             </div>
-                            <h3 class="stats-number" id="pendingReviews">0</h3>
+                            <h3 class="stats-number" id="pendingReviews"><?php echo $statPendingCount; ?></h3>
                             <p class="text-muted">Logs awaiting your review</p>
                         </div>
                     </div>
@@ -84,7 +137,7 @@ $user_name = $_SESSION['name'] ?? 'Supervisor';
                                     <i class="fas fa-check-circle"></i>
                                 </div>
                             </div>
-                            <h3 class="stats-number" id="approvedLogs">0</h3>
+                            <h3 class="stats-number" id="approvedLogs"><?php echo $statApprovedCount; ?></h3>
                             <p class="text-muted">Total approved log entries</p>
                         </div>
                     </div>
@@ -98,12 +151,49 @@ $user_name = $_SESSION['name'] ?? 'Supervisor';
                                     <i class="fas fa-users"></i>
                                 </div>
                             </div>
-                            <h3 class="stats-number" id="totalStudents">0</h3>
+                            <h3 class="stats-number" id="totalStudents"><?php echo $statStudentCount; ?></h3>
                             <p class="text-muted">Students under your supervision</p>
                         </div>
                     </div>
                 </div>
             </div>
+
+            <?php if ($breachCount > 0): ?>
+            <!-- Geofence Breach Alerts -->
+            <div class="row mb-4">
+                <div class="col-12">
+                    <div class="card" style="border-left:5px solid #dc3545;border-radius:12px;">
+                        <div class="card-header" style="background:#dc3545;color:white;border-radius:7px 7px 0 0;">
+                            <h5 class="mb-0"><i class="fas fa-exclamation-triangle me-2"></i>Geofence Breach Alerts (<?php echo $breachCount; ?> unread)</h5>
+                        </div>
+                        <div class="card-body" style="padding:0;">
+                            <?php foreach ($breachAlerts as $alert): ?>
+                                <div style="padding:1rem 1.25rem;border-bottom:1px solid #f0f0f0;display:flex;justify-content:space-between;align-items:start;">
+                                    <div>
+                                        <div style="font-weight:600;color:#dc3545;">
+                                            <i class="fas fa-map-marker-times me-1"></i><?php echo htmlspecialchars($alert['title']); ?>
+                                            <?php if (!$alert['is_read']): ?>
+                                                <span class="badge bg-danger ms-1">NEW</span>
+                                            <?php endif; ?>
+                                        </div>
+                                        <div style="color:#6c757d;font-size:0.9rem;margin-top:0.25rem;"><?php echo htmlspecialchars($alert['message']); ?></div>
+                                        <div style="color:#adb5bd;font-size:0.8rem;margin-top:0.25rem;">
+                                            <i class="fas fa-clock me-1"></i><?php echo date('M j, Y g:i A', strtotime($alert['created_at'])); ?>
+                                        </div>
+                                    </div>
+                                    <?php if (!$alert['is_read']): ?>
+                                        <a href="alerts.php?mark_read=<?php echo $alert['id']; ?>" class="btn btn-sm btn-outline-secondary">Mark as read</a>
+                                    <?php endif; ?>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                        <div class="card-footer" style="background:#f8f9fa;">
+                            <a href="alerts.php" class="btn btn-sm btn-outline-danger"><i class="fas fa-bell me-1"></i>View All Alerts</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <?php endif; ?>
 
             <div class="row">
                 <div class="col-md-8">
@@ -116,7 +206,27 @@ $user_name = $_SESSION['name'] ?? 'Supervisor';
                         </div>
                         <div class="card-body">
                             <div id="pendingLogsContainer">
-                                <p class="text-muted text-center">Loading pending logs...</p>
+                                <?php if (count($pendingLogsList) > 0): ?>
+                                    <?php foreach ($pendingLogsList as $log): ?>
+                                        <div class="d-flex justify-content-between align-items-center py-2 border-bottom">
+                                            <div>
+                                                <strong><?php echo htmlspecialchars($log['student_name']); ?></strong>
+                                                <div style="font-size:0.85rem;color:#6c757d;">
+                                                    <?php echo htmlspecialchars(substr($log['activity_description'] ?? $log['description'] ?? '', 0, 80)); ?>
+                                                </div>
+                                                <div style="font-size:0.8rem;color:#adb5bd;">
+                                                    <?php echo date('M j, Y', strtotime($log['date'] ?? $log['created_at'])); ?>
+                                                </div>
+                                            </div>
+                                            <a href="review.php" class="btn btn-sm btn-outline-primary">Review</a>
+                                        </div>
+                                    <?php endforeach; ?>
+                                <?php else: ?>
+                                    <p class="text-muted text-center my-3">
+                                        <i class="fas fa-check-circle text-success me-1"></i>
+                                        No pending logs to review.
+                                    </p>
+                                <?php endif; ?>
                             </div>
                         </div>
                     </div>
@@ -149,15 +259,15 @@ $user_name = $_SESSION['name'] ?? 'Supervisor';
                         <div class="card-body">
                             <div class="mb-2 d-flex justify-content-between align-items-center">
                                 <span><i class="fas fa-clock text-warning me-2"></i>Pending:</span>
-                                <span id="pendingCount" class="badge bg-warning">0</span>
+                                <span id="pendingCount" class="badge bg-warning"><?php echo $statPendingCount; ?></span>
                             </div>
                             <div class="mb-2 d-flex justify-content-between align-items-center">
                                 <span><i class="fas fa-check-circle text-success me-2"></i>Approved:</span>
-                                <span id="approvedCount" class="badge bg-success">0</span>
+                                <span id="approvedCount" class="badge bg-success"><?php echo $statApprovedCount; ?></span>
                             </div>
                             <div class="mb-2 d-flex justify-content-between align-items-center">
                                 <span><i class="fas fa-times-circle text-danger me-2"></i>Rejected:</span>
-                                <span id="rejectedCount" class="badge bg-danger">0</span>
+                                <span id="rejectedCount" class="badge bg-danger"><?php echo $statRejectedCount; ?></span>
                             </div>
                         </div>
                     </div>

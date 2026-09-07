@@ -349,6 +349,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     Sign In
                 </button>
             </form>
+
+            <div style="margin-top:1.25rem;padding:1rem;background:#f0f7f0;border:1px dashed #4a7c59;border-radius:10px;font-size:0.85rem;color:#1a4d2e;">
+                <strong><i class="fas fa-info-circle me-1"></i>Test Credentials:</strong><br>
+                Matric Number: <code>2021/123456</code><br>
+                Password: <code>12345678</code>
+            </div>
             
             <div class="divider">
                 <span>Don't have an account?</span>

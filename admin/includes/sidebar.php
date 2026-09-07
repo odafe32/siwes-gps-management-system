@@ -25,7 +25,14 @@ $current_page = basename($_SERVER['PHP_SELF'], '.php');
                 Dashboard
             </a>
         </div>
-  
+
+        <div class="nav-item">
+            <a href="organizations.php" class="nav-link <?php echo ($current_page === 'organizations' || $current_page === 'organization-add' || $current_page === 'organization-edit') ? 'active' : ''; ?>">
+                <i class="fas fa-building"></i>
+                Organizations
+            </a>
+        </div>
+
         <div class="nav-item">
             <a href="studentmanagement.php" class="nav-link <?php echo $current_page === "studentmanagement" ? "active" : ""; ?>">
                 <i class="fas fa-user-graduate"></i>
@@ -63,8 +70,7 @@ $current_page = basename($_SERVER['PHP_SELF'], '.php');
                 User Management
             </a>
         </div>
-                </div>
-        
+
         <!-- Management Section -->
         <div class="nav-section">
             <div class="nav-section-title">Management</div>
@@ -88,8 +94,7 @@ $current_page = basename($_SERVER['PHP_SELF'], '.php');
                 Communications
             </a>
         </div>
-                </div>
-        
+
         <!-- System Tools Section -->
         <div class="nav-section">
             <div class="nav-section-title">System Tools</div>
@@ -101,8 +106,7 @@ $current_page = basename($_SERVER['PHP_SELF'], '.php');
                 Settings
             </a>
         </div>
-                  </div>
-        
+
         <!-- Account Section -->
         <div class="nav-section">
             <div class="nav-section-title">Account</div>
