@@ -23,14 +23,15 @@ if ($data['action'] === 'dashboard') {
     
     echo json_encode([
         'success' => true,
-        'name' => $user['name'],
+        'name' => $user['username'],
         'pending_logs' => $pendingLogs
     ]);
     exit;
 }
 
 if ($data['action'] === 'get_pending_logs') {
-    $logs = LogEntry::getPendingForSupervisor($pdo, $_SESSION['user_id']);
+    $student_id = isset($data['student_id']) ? $data['student_id'] : null;
+    $logs = LogEntry::getPendingForSupervisor($pdo, $_SESSION['user_id'], $student_id);
     echo json_encode(['success' => true, 'logs' => $logs]);
     exit;
 }
@@ -69,7 +70,7 @@ if ($data['action'] === 'reject_log') {
 
 if ($data['action'] === 'get_profile') {
     $user = User::findById($pdo, $_SESSION['user_id']);
-    unset($user['password_hash']);
+    unset($user['password']);
     echo json_encode(['success' => true, 'profile' => $user]);
     exit;
 }
@@ -91,5 +92,33 @@ if ($data['action'] === 'update_profile') {
     exit;
 }
 
+if ($data['action'] === 'get_assigned_students') {
+    $students = User::getStudentsForSupervisor($pdo, $_SESSION['user_id']);
+    
+    // Get additional data for each student
+    foreach ($students as &$student) {
+        // Get pending logs count
+        $stmt = $pdo->prepare("SELECT COUNT(*) as pending_count FROM log_entries WHERE student_id = ? AND status = 'pending'");
+        $stmt->execute([$student['id']]);
+        $pendingCount = $stmt->fetch();
+        $student['pending_logs'] = $pendingCount['pending_count'];
+        
+        // Check if student has any logs (active status)
+        $stmt = $pdo->prepare("SELECT COUNT(*) as log_count FROM log_entries WHERE student_id = ?");
+        $stmt->execute([$student['id']]);
+        $logCount = $stmt->fetch();
+        $student['active'] = $logCount['log_count'] > 0;
+    }
+    
+    echo json_encode([
+        'success' => true, 
+        'students' => $students,
+        'total' => count($students),
+        'active' => count(array_filter($students, function($s) { return $s['active']; })),
+        'inactive' => count(array_filter($students, function($s) { return !$s['active']; }))
+    ]);
+    exit;
+}
+
 echo json_encode(['success' => false, 'message' => 'Invalid action']);
-?> 
+?>

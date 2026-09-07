@@ -1,6 +1,76 @@
+
+
+
+
 # SIWES Electronic Logbook System
 
+
 A location-based electronic logbook system for SIWES (Students Industrial Work Experience Scheme) with role-based access for students, supervisors, and coordinators.
+
+---
+
+## ⚡ How to Run This Project (Quick Start)
+
+### Prerequisites
+- **PHP 8.0+** installed and on your PATH
+- **MySQL** running (via Laragon, XAMPP, or standalone)
+- A browser
+
+### Step 1: Start MySQL
+Make sure MySQL is running on `localhost:3306` with username `root` and no password (default Laragon/XAMPP setup).
+
+### Step 2: Create the database
+Open a terminal in the project folder and run:
+
+```bash
+php backend/config/db.php
+```
+
+This automatically creates the `siwes_db` database, all tables, and test data. You should see:
+
+```
+Database and tables created successfully with test data!
+```
+
+> If the database already exists but is empty, drop it first:
+> ```sql
+> DROP DATABASE IF EXISTS siwes_db;
+> ```
+> Then run the command again.
+
+### Step 3: Start the PHP development server
+
+```bash
+php -S localhost:8080 -t .
+```
+
+> **Note:** If port 8080 is already in use, pick another port like `8081` or `9000`.
+
+### Step 4: Open the project in your browser
+
+Go to: **http://localhost:8080**
+
+### Login Pages & Test Credentials
+
+| Role | Login URL | Login field | Value | Password |
+|---|---|---|---|---|
+| Student | http://localhost:8080/student/login.php | Matric number | `2021/123456` | `12345678` |
+| Supervisor | http://localhost:8080/supervisor/login.php | Email | `supervisor@test.com` | `12345678` |
+| Admin | http://localhost:8080/admin/login.php | Email | `admin@test.com` | `12345678` |
+
+> **Student login uses matric number, not email.** Supervisor and admin use email.
+
+### Troubleshooting
+
+| Problem | Solution |
+|---|---|
+| `Connection failed` error | MySQL is not running. Start Laragon/XAMPP MySQL service. |
+| Page shows JSON from another API | Another server is using that port. Use a different port: `php -S localhost:8081 -t .` |
+| `Table 'siwes_db.users' doesn't exist` | Database exists but is empty. Drop it and re-run `php backend/config/db.php`. |
+| Login fails with "Invalid credentials" | Make sure the database was created with test data (Step 2). |
+| GPS location not working | Browsers require HTTPS for geolocation. On localhost it should work — check browser permissions. |
+
+---
 
 ## 🚀 Features
 

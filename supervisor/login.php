@@ -88,6 +88,19 @@ if (isset($_SESSION['user_id']) && $_SESSION['role'] === 'supervisor') {
             border-radius: 10px 0 0 10px;
         }
         
+        .password-toggle {
+            background: var(--nsukka-green-light);
+            color: white;
+            border: 2px solid var(--nsukka-green);
+            border-radius: 0 10px 10px 0;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .password-toggle:hover {
+            background: var(--nsukka-green-dark);
+        }
+        
         .btn-nsukka {
             background: linear-gradient(45deg, var(--nsukka-green), var(--nsukka-green-light));
             border: none;
@@ -139,7 +152,8 @@ if (isset($_SESSION['user_id']) && $_SESSION['role'] === 'supervisor') {
             <div class="col-md-6 col-lg-4">
                 <div class="login-container">
                     <div class="login-header">
-                        <img src="../assets/images/nsukka-logo.png" alt="Nsukka Keffi Logo" class="university-logo">
+                        <img src="../assets/images/logo.jpg" alt="Nsukka Keffi Logo" class="university-logo">
+
                         <h2>Supervisor Login</h2>
                         <p>Review and approve student log entries</p>
                     </div>
@@ -152,9 +166,9 @@ if (isset($_SESSION['user_id']) && $_SESSION['role'] === 'supervisor') {
                             </div>
                         <?php endif; ?>
                         
-                        <form action="../backend/api/auth.php" method="POST">
-                            <input type="hidden" name="action" value="login">
-                            <input type="hidden" name="role" value="supervisor">
+                        <form id="loginForm">
+                            <input type="hidden" id="action" value="login">
+                            <input type="hidden" id="role" value="supervisor">
                             
                             <div class="mb-3">
                                 <label for="email" class="form-label fw-bold">Email Address</label>
@@ -173,11 +187,14 @@ if (isset($_SESSION['user_id']) && $_SESSION['role'] === 'supervisor') {
                                         <i class="fas fa-lock"></i>
                                     </span>
                                     <input type="password" class="form-control" id="password" name="password" placeholder="Enter your password" required>
+                                    <span class="input-group-text password-toggle" onclick="togglePassword('password')">
+                                        <i class="fas fa-eye"></i>
+                                    </span>
                                 </div>
                             </div>
                             
                             <div class="d-grid mb-3">
-                                <button type="submit" class="btn btn-nsukka">
+                                <button type="submit" class="btn btn-nsukka" id="loginButton">
                                     <i class="fas fa-sign-in-alt me-2"></i>Login as Supervisor
                                 </button>
                             </div>
@@ -195,5 +212,84 @@ if (isset($_SESSION['user_id']) && $_SESSION['role'] === 'supervisor') {
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script>
+        // Toggle password visibility
+        function togglePassword(inputId) {
+            const passwordInput = document.getElementById(inputId);
+            const icon = document.querySelector('.password-toggle i');
+            
+            if (passwordInput.type === 'password') {
+                passwordInput.type = 'text';
+                icon.classList.remove('fa-eye');
+                icon.classList.add('fa-eye-slash');
+            } else {
+                passwordInput.type = 'password';
+                icon.classList.remove('fa-eye-slash');
+                icon.classList.add('fa-eye');
+            }
+        }
+        
+        // Handle login form submission
+        $(document).ready(function() {
+            $('#loginForm').on('submit', function(e) {
+                e.preventDefault();
+                
+                const email = $('#email').val();
+                const password = $('#password').val();
+                const action = $('#action').val();
+                const role = $('#role').val();
+                
+                // Disable button and show loading state
+                $('#loginButton').prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-2"></i>Logging in...');
+                
+                // Send AJAX request
+                $.ajax({
+                    url: '../backend/api/auth.php',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({
+                        action: action,
+                        role: role,
+                        email: email,
+                        password: password
+                    }),
+                    success: function(response) {
+                        if (response.success) {
+                            window.location.href = 'dashboard.php';
+                        } else {
+                            // Show error message
+                            const errorMsg = response.message || 'Login failed. Please try again.';
+                            const alertHtml = `<div class="alert alert-danger"><i class="fas fa-exclamation-triangle me-2"></i>${errorMsg}</div>`;
+                            
+                            // Remove any existing alerts
+                            $('.alert').remove();
+                            
+                            // Add new alert before the form
+                            $('#loginForm').before(alertHtml);
+                            
+                            // Reset button
+                            $('#loginButton').prop('disabled', false).html('<i class="fas fa-sign-in-alt me-2"></i>Login as Supervisor');
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        // Show error message
+                        const alertHtml = `<div class="alert alert-danger"><i class="fas fa-exclamation-triangle me-2"></i>Server error. Please try again later.</div>`;
+                        
+                        // Remove any existing alerts
+                        $('.alert').remove();
+                        
+                        // Add new alert before the form
+                        $('#loginForm').before(alertHtml);
+                        
+                        // Reset button
+                        $('#loginButton').prop('disabled', false).html('<i class="fas fa-sign-in-alt me-2"></i>Login as Supervisor');
+                        
+                        console.error('Login error:', error);
+                    }
+                });
+            });
+        });
+    </script>
 </body>
-</html> 
+</html>

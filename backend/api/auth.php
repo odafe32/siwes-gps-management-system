@@ -3,34 +3,53 @@ require_once '../config/db.php';
 require_once '../config/session.php';
 require_once '../models/User.php';
 
-// Handle both JSON and form data
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $data = [];
+// Handle GET requests (for logout links)
+if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+    $action = $_GET['action'] ?? '';
     
-    // Check if it's JSON request
-    $content_type = $_SERVER['CONTENT_TYPE'] ?? '';
-    if (strpos($content_type, 'application/json') !== false) {
-        $data = json_decode(file_get_contents('php://input'), true);
-    } else {
-        // Handle form data
-        $data = $_POST;
+    if ($action === 'logout') {
+        session_destroy();
+        header('Location: ../../index.php');
+        exit();
     }
-    
-    $action = $data['action'] ?? '';
+}
+
+// Handle form-based POST requests (non-JSON). JSON requests are handled below.
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $content_type = $_SERVER['CONTENT_TYPE'] ?? '';
+
+    // If this is a JSON request, skip this block and go to the JSON API section below
+    if (strpos($content_type, 'application/json') === false) {
+        $data = $_POST;
+        $action = $data['action'] ?? '';
     
     if ($action === 'login') {
-        $email = $data['email'];
+        $email = $data['email'] ?? $data['username'] ?? '';
+        $matric_number = $data['matric_number'] ?? '';
         $password = $data['password'];
         $role = $data['role'];
 
-        $stmt = $pdo->prepare("SELECT * FROM users WHERE email = ? AND role = ?");
-        $stmt->execute([$email, $role]);
+        // Handle different login methods based on role
+        if ($role === 'admin' || $role === 'coordinator') {
+            $stmt = $pdo->prepare("SELECT * FROM users WHERE email = ? AND role IN ('admin', 'coordinator')");
+            $stmt->execute([$email]);
+        } elseif ($role === 'student') {
+            // For students, use matric number instead of email
+            $stmt = $pdo->prepare("SELECT * FROM users WHERE matric_number = ? AND role = 'student'");
+            $stmt->execute([$matric_number]);
+        } else {
+            $stmt = $pdo->prepare("SELECT * FROM users WHERE email = ? AND role = ?");
+            $stmt->execute([$email, $role]);
+        }
+        
         $user = $stmt->fetch();
 
-        if ($user && password_verify($password, $user['password_hash'])) {
+        if ($user && password_verify($password, $user['password'])) {
             $_SESSION['user_id'] = $user['id'];
             $_SESSION['role'] = $user['role'];
-            $_SESSION['name'] = $user['name'];
+            
+            // Set user name from username field
+            $_SESSION['name'] = $user['username'] ?? $user['email'];
             
             // Redirect based on role
             switch ($role) {
@@ -40,6 +59,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 case 'supervisor':
                     header('Location: ../../supervisor/dashboard.php');
                     break;
+                case 'coordinator':
                 case 'admin':
                     header('Location: ../../admin/dashboard.php');
                     break;
@@ -72,6 +92,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header('Location: ../../index.php');
         exit();
     }
+    } // end non-JSON POST handling
 }
 
 // Handle JSON API requests
@@ -85,6 +106,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 }
 
 $data = json_decode(file_get_contents('php://input'), true);
+
+if (!$data || !isset($data['action'])) {
+    echo json_encode(['success' => false, 'message' => 'Invalid request']);
+    exit;
+}
 
 if ($data['action'] === 'register') {
     // Registration logic (students only)
@@ -113,23 +139,35 @@ if ($data['action'] === 'register') {
 }
 
 if ($data['action'] === 'login') {
-    $email = $data['email'];
+    $email = $data['email'] ?? $data['username'] ?? '';
+    $matric_number = $data['matric_number'] ?? '';
     $password = $data['password'];
     $role = $data['role'];
 
-    $stmt = $pdo->prepare("SELECT * FROM users WHERE email = ? AND role = ?");
-    $stmt->execute([$email, $role]);
+    // Handle different login methods based on role
+    if ($role === 'admin' || $role === 'coordinator') {
+        $stmt = $pdo->prepare("SELECT * FROM users WHERE email = ? AND role IN ('admin', 'coordinator')");
+        $stmt->execute([$email]);
+    } elseif ($role === 'student') {
+        // For students, use matric number instead of email
+        $stmt = $pdo->prepare("SELECT * FROM users WHERE matric_number = ? AND role = 'student'");
+        $stmt->execute([$matric_number]);
+    } else {
+        $stmt = $pdo->prepare("SELECT * FROM users WHERE email = ? AND role = ?");
+        $stmt->execute([$email, $role]);
+    }
+    
     $user = $stmt->fetch();
 
-    if ($user && password_verify($password, $user['password_hash'])) {
+    if ($user && password_verify($password, $user['password'])) {
         $_SESSION['user_id'] = $user['id'];
         $_SESSION['role'] = $user['role'];
-        $_SESSION['name'] = $user['name'];
+        $_SESSION['name'] = $user['username'] ?? $user['email'];
         
         echo json_encode([
             'success' => true, 
             'role' => $user['role'],
-            'name' => $user['name'],
+            'name' => $user['username'] ?? $user['email'],
             'message' => 'Login successful'
         ]);
     } else {
@@ -159,4 +197,4 @@ if ($data['action'] === 'check_auth') {
 }
 
 echo json_encode(['success' => false, 'message' => 'Invalid action']);
-?> 
+?>

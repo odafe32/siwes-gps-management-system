@@ -1,230 +1,456 @@
+<?php
+session_start();
+require_once '../backend/config/db.php';
+require_once '../backend/config/session.php';
+
+// Check if user is logged in and has admin/coordinator role
+if (!isLoggedIn() || (!hasRole('admin') && !hasRole('coordinator'))) {
+    header('Location: login.php');
+    exit();
+}
+
+// Get dashboard statistics with error handling
+try {
+    // Total students
+    $stmt = $pdo->query("SELECT COUNT(*) as count FROM users WHERE role = 'student'");
+    $totalStudents = $stmt->fetch()['count'];
+    
+    // Total supervisors
+    $stmt = $pdo->query("SELECT COUNT(*) as count FROM users WHERE role = 'supervisor'");
+    $totalSupervisors = $stmt->fetch()['count'];
+    
+    // Total log entries
+    $stmt = $pdo->query("SELECT COUNT(*) as count FROM log_entries");
+    $totalLogs = $stmt->fetch()['count'];
+    
+    // Pending logs
+    $stmt = $pdo->query("SELECT COUNT(*) as count FROM log_entries WHERE status = 'pending'");
+    $pendingLogs = $stmt->fetch()['count'];
+    
+    // Approved logs
+    $stmt = $pdo->query("SELECT COUNT(*) as count FROM log_entries WHERE status = 'approved'");
+    $approvedLogs = $stmt->fetch()['count'];
+    
+    // Rejected logs
+    $stmt = $pdo->query("SELECT COUNT(*) as count FROM log_entries WHERE status = 'rejected'");
+    $rejectedLogs = $stmt->fetch()['count'];
+    
+    // Recent activities
+    $stmt = $pdo->query("SELECT le.*, u.full_name as student_name FROM log_entries le 
+    JOIN users u ON le.student_id = u.id 
+                         ORDER BY le.created_at DESC LIMIT 5");
+    $recentActivities = $stmt->fetchAll();
+    
+} catch (PDOException $e) {
+    $error = "Database error: " . $e->getMessage();
+    // Set default values if database query fails
+    $totalStudents = 0;
+    $totalSupervisors = 0;
+    $totalLogs = 0;
+    $pendingLogs = 0;
+    $approvedLogs = 0;
+    $rejectedLogs = 0;
+    $recentActivities = [];
+}
+?>
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SIWES Coordinator Dashboard</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <title>Admin Dashboard - SIWES Logbook</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="assets/admin-styles.css">
+    
+    <!-- Additional dashboard-specific styles -->
     <style>
-        .stats-card {
-            transition: transform 0.3s ease;
+        .welcome-section {
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+            color: white;
+            padding: 2rem;
+            border-radius: 15px;
+            margin-bottom: 2rem;
+            position: relative;
+            overflow: hidden;
         }
-        .stats-card:hover {
+        
+        .welcome-section::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 200px;
+            height: 200px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 50%;
+            transform: translate(50%, -50%);
+        }
+        
+        .welcome-title {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+        
+        .welcome-subtitle {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        
+        .stat-card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            border-left: 4px solid var(--primary-color);
+        }
+        
+        .stat-card:hover {
             transform: translateY(-5px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
         }
-        .navbar-brand {
-            font-weight: bold;
+        
+        .stat-card.success {
+            border-left-color: var(--success-color);
+        }
+        
+        .stat-card.warning {
+            border-left-color: var(--warning-color);
+        }
+        
+        .stat-card.danger {
+            border-left-color: var(--danger-color);
+        }
+        
+        .stat-card.info {
+            border-left-color: var(--info-color);
+        }
+        
+        .stat-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1rem;
+        }
+        
+        .stat-icon {
+            width: 50px;
+            height: 50px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            color: white;
+        }
+        
+        .stat-icon.primary {
+            background: var(--primary-color);
+        }
+        
+        .stat-icon.success {
+            background: var(--success-color);
+        }
+        
+        .stat-icon.warning {
+            background: var(--warning-color);
+        }
+        
+        .stat-icon.danger {
+            background: var(--danger-color);
+        }
+        
+        .stat-icon.info {
+            background: var(--info-color);
+        }
+        
+        .stat-number {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--primary-color);
+        }
+        
+        .stat-label {
+            font-size: 0.875rem;
+            color: #6c757d;
+            font-weight: 500;
+        }
+        
+        .content-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 2rem;
+        }
+        
+        .recent-activities {
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        
+        .section-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--primary-color);
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .activity-item {
+            display: flex;
+            align-items: center;
+            padding: 1rem 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        
+        .activity-item:last-child {
+            border-bottom: none;
+        }
+        
+        .activity-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 1rem;
+            font-size: 1rem;
+            color: white;
+        }
+        
+        .activity-content {
+            flex: 1;
+        }
+        
+        .activity-title {
+            font-weight: 600;
+            color: var(--primary-color);
+            margin-bottom: 0.25rem;
+        }
+        
+        .activity-time {
+            font-size: 0.875rem;
+            color: #6c757d;
+        }
+        
+        .quick-actions {
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        
+        .action-btn {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            width: 100%;
+            padding: 1rem;
+            margin-bottom: 0.75rem;
+            background: var(--light-color);
+            border: none;
+            border-radius: 8px;
+            color: var(--primary-color);
+            text-decoration: none;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+        
+        .action-btn:hover {
+            background: var(--primary-color);
+            color: white;
+            transform: translateX(5px);
+        }
+        
+        @media (max-width: 768px) {
+            .content-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .stats-grid {
+                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            }
         }
     </style>
 </head>
 <body>
-    <nav class="navbar navbar-expand-lg navbar-dark bg-danger">
-        <div class="container">
-            <a class="navbar-brand" href="#">
-                <i class="fas fa-cogs me-2"></i>SIWES Coordinator
-            </a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav me-auto">
-                    <li class="nav-item">
-                        <a class="nav-link active" href="admin-dashboard.html">
-                            <i class="fas fa-home me-1"></i>Dashboard
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="admin-manage.html">
-                            <i class="fas fa-users me-1"></i>Manage Users
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="admin-reports.html">
-                            <i class="fas fa-chart-bar me-1"></i>Reports
-                        </a>
-                    </li>
-                </ul>
-                <ul class="navbar-nav">
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown">
-                            <i class="fas fa-user-circle me-1"></i><span id="adminName">Coordinator</span>
-                        </a>
-                        <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="#" id="logoutBtn">Logout</a></li>
-                        </ul>
-                    </li>
-                </ul>
-            </div>
-        </div>
-    </nav>
-
-    <div class="container mt-4">
-        <div class="row">
-            <div class="col-12">
-                <h2 class="mb-4">Welcome, <span id="welcomeName">Coordinator</span>!</h2>
-            </div>
-        </div>
-
-        <div class="row mb-4">
-            <div class="col-md-3 mb-3">
-                <div class="card stats-card bg-primary text-white">
-                    <div class="card-body text-center">
-                        <i class="fas fa-users fa-2x mb-2"></i>
-                        <h5 class="card-title">Total Students</h5>
-                        <h3 class="card-text" id="totalStudents">0</h3>
-                    </div>
+    <!-- Include Sidebar -->
+    <?php include 'includes/sidebar.php'; ?>
+    
+    <!-- Main Content -->
+    <div class="main-content">
+        <!-- Header -->
+        <?php 
+        $pageTitle = 'Dashboard';
+        include 'includes/header.php'; 
+        ?>
+        
+        <!-- Dashboard Content -->
+        <div class="page-content">
+            <!-- Error Display -->
+            <?php if (isset($error)): ?>
+                <div class="alert alert-danger fade-in-up">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <?php echo htmlspecialchars($error); ?>
                 </div>
+            <?php endif; ?>
+            
+            <!-- Welcome Section -->
+            <div class="welcome-section fade-in-up">
+                <h2 class="welcome-title">Welcome back, <?php echo htmlspecialchars($_SESSION['name'] ?? 'Admin'); ?>!</h2>
+                <p class="welcome-subtitle">Here's what's happening with your SIWES system today.</p>
             </div>
-            <div class="col-md-3 mb-3">
-                <div class="card stats-card bg-success text-white">
-                    <div class="card-body text-center">
-                        <i class="fas fa-user-tie fa-2x mb-2"></i>
-                        <h5 class="card-title">Total Supervisors</h5>
-                        <h3 class="card-text" id="totalSupervisors">0</h3>
+            
+            <!-- Statistics Grid -->
+            <div class="stats-grid">
+                <div class="stat-card fade-in-up">
+                    <div class="stat-header">
+                        <div class="stat-icon primary">
+                            <i class="fas fa-users"></i>
                     </div>
-                </div>
-            </div>
-            <div class="col-md-3 mb-3">
-                <div class="card stats-card bg-info text-white">
-                    <div class="card-body text-center">
-                        <i class="fas fa-clipboard-list fa-2x mb-2"></i>
-                        <h5 class="card-title">Total Logs</h5>
-                        <h3 class="card-text" id="totalLogs">0</h3>
+                        <div class="stat-number"><?php echo $totalStudents; ?></div>
                     </div>
+                    <div class="stat-label">Total Students</div>
                 </div>
+                
+                <div class="stat-card fade-in-up">
+                    <div class="stat-header">
+                        <div class="stat-icon success">
+                            <i class="fas fa-user-tie"></i>
             </div>
-            <div class="col-md-3 mb-3">
-                <div class="card stats-card bg-warning text-white">
-                    <div class="card-body text-center">
-                        <i class="fas fa-clock fa-2x mb-2"></i>
-                        <h5 class="card-title">Pending Reviews</h5>
-                        <h3 class="card-text" id="pendingLogs">0</h3>
+                        <div class="stat-number"><?php echo $totalSupervisors; ?></div>
                     </div>
-                </div>
-            </div>
+                    <div class="stat-label">Supervisors</div>
         </div>
 
-        <div class="row">
-            <div class="col-md-8">
-                <div class="card">
-                    <div class="card-header">
-                        <h5 class="mb-0">Quick Actions</h5>
+                <div class="stat-card fade-in-up">
+                    <div class="stat-header">
+                        <div class="stat-icon info">
+                            <i class="fas fa-clipboard-list"></i>
                     </div>
-                    <div class="card-body">
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <a href="admin-manage.html" class="btn btn-primary btn-lg w-100">
-                                    <i class="fas fa-users me-2"></i>Manage Users
-                                </a>
+                        <div class="stat-number"><?php echo $totalLogs; ?></div>
+                    </div>
+                    <div class="stat-label">Total Logs</div>
+        </div>
+
+                <div class="stat-card warning fade-in-up">
+                    <div class="stat-header">
+                        <div class="stat-icon warning">
+                            <i class="fas fa-clock"></i>
+                        </div>
+                        <div class="stat-number"><?php echo $pendingLogs; ?></div>
+                    </div>
+                    <div class="stat-label">Pending Review</div>
+                </div>
+
+                <div class="stat-card success fade-in-up">
+                    <div class="stat-header">
+                        <div class="stat-icon success">
+                            <i class="fas fa-check-circle"></i>
+                    </div>
+                        <div class="stat-number"><?php echo $approvedLogs; ?></div>
+                    </div>
+                    <div class="stat-label">Approved</div>
+                </div>
+
+                <div class="stat-card danger fade-in-up">
+                    <div class="stat-header">
+                        <div class="stat-icon danger">
+                            <i class="fas fa-times-circle"></i>
+                        </div>
+                        <div class="stat-number"><?php echo $rejectedLogs; ?></div>
+                    </div>
+                    <div class="stat-label">Rejected</div>
+                </div>
+            </div>
+
+            <!-- Content Grid -->
+            <div class="content-grid">
+                <!-- Recent Activities -->
+                <div class="recent-activities fade-in-up">
+                    <h3 class="section-title">
+                        <i class="fas fa-history"></i>
+                        Recent Activities
+                    </h3>
+                    
+                    <?php if (!empty($recentActivities)): ?>
+                        <?php foreach ($recentActivities as $activity): ?>
+                            <div class="activity-item">
+                                <div class="activity-icon primary">
+                                    <i class="fas fa-file-alt"></i>
+                    </div>
+                                <div class="activity-content">
+                                    <div class="activity-title">
+                                        <?php echo htmlspecialchars($activity['student_name']); ?> submitted a log entry
+                        </div>
+                                    <div class="activity-time">
+                                        <?php echo date('M j, Y g:i A', strtotime($activity['created_at'])); ?>
+                    </div>
+                </div>
                             </div>
-                            <div class="col-md-6 mb-3">
-                                <a href="admin-reports.html" class="btn btn-success btn-lg w-100">
-                                    <i class="fas fa-chart-bar me-2"></i>Generate Reports
-                                </a>
+                        <?php endforeach; ?>
+                    <?php else: ?>
+                        <div class="activity-item">
+                            <div class="activity-content">
+                                <div class="activity-title">No recent activities</div>
+                                <div class="activity-time">Check back later for updates</div>
                             </div>
                         </div>
-                    </div>
+                    <?php endif; ?>
                 </div>
-            </div>
-            <div class="col-md-4">
-                <div class="card">
-                    <div class="card-header">
-                        <h5 class="mb-0">System Overview</h5>
-                    </div>
-                    <div class="card-body">
-                        <div class="mb-3">
-                            <strong>Approved Logs:</strong>
-                            <span id="approvedLogs" class="badge bg-success ms-2">0</span>
-                        </div>
-                        <div class="mb-3">
-                            <strong>Rejected Logs:</strong>
-                            <span id="rejectedLogs" class="badge bg-danger ms-2">0</span>
-                        </div>
-                        <div class="mb-3">
-                            <strong>Active Students:</strong>
-                            <span id="activeStudents" class="badge bg-primary ms-2">0</span>
-                        </div>
-                    </div>
+
+                <!-- Quick Actions -->
+                <div class="quick-actions fade-in-up">
+                    <h3 class="section-title">
+                        <i class="fas fa-bolt"></i>
+                        Quick Actions
+                    </h3>
+                    
+                    <a href="manage.php" class="action-btn">
+                        <i class="fas fa-users"></i>
+                        Manage Users
+                    </a>
+                    
+                    <a href="reports.php" class="action-btn">
+                        <i class="fas fa-chart-bar"></i>
+                        Generate Reports
+                    </a>
+                    
+                    <a href="gps-monitoring.php" class="action-btn">
+                        <i class="fas fa-map-marker-alt"></i>
+                        GPS Monitoring
+                    </a>
+                    
+                    <a href="communications.php" class="action-btn">
+                        <i class="fas fa-comments"></i>
+                        Communications
+                    </a>
+                    
+                    <a href="settings.php" class="action-btn">
+                        <i class="fas fa-cog"></i>
+                        System Settings
+                    </a>
                 </div>
             </div>
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        // Check authentication on page load
-        fetch('/backend/api/auth.php', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                action: 'check_auth'
-            })
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (!data.success || data.role !== 'admin') {
-                window.location.href = 'admin-login.html';
-            } else {
-                loadDashboardData();
-            }
-        })
-        .catch(error => {
-            window.location.href = 'admin-login.html';
-        });
-
-        function loadDashboardData() {
-            fetch('/backend/api/admin.php', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    action: 'dashboard'
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    document.getElementById('welcomeName').textContent = data.name;
-                    document.getElementById('adminName').textContent = data.name;
-                    
-                    // Update stats
-                    document.getElementById('totalStudents').textContent = data.stats.total_students || 0;
-                    document.getElementById('totalSupervisors').textContent = data.stats.total_supervisors || 0;
-                    document.getElementById('totalLogs').textContent = data.stats.total_logs || 0;
-                    document.getElementById('pendingLogs').textContent = data.stats.pending || 0;
-                    document.getElementById('approvedLogs').textContent = data.stats.approved || 0;
-                    document.getElementById('rejectedLogs').textContent = data.stats.rejected || 0;
-                    document.getElementById('activeStudents').textContent = data.stats.total_students || 0;
-                } else {
-                    window.location.href = 'admin-login.html';
-                }
-            })
-            .catch(error => {
-                console.error('Error loading dashboard data:', error);
-            });
-        }
-
-        // Logout functionality
-        document.getElementById('logoutBtn').addEventListener('click', function(e) {
-            e.preventDefault();
-            
-            fetch('/backend/api/auth.php', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    action: 'logout'
-                })
-            })
-            .then(() => {
-                window.location.href = 'index.html';
-            });
-        });
-    </script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="assets/admin-scripts.js"></script>
 </body>
-</html> 
+</html>

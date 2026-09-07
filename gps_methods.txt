@@ -1,0 +1,32 @@
+﻿    // GPS Monitoring Methods
+    public static function getRecentLocations($pdo, $limit = 50) {
+        $stmt = $pdo->prepare("
+            SELECT le.*, u.full_name as student_name, u.matric_number, u.department, u.workplace_name, u.workplace_latitude, u.workplace_longitude
+            FROM log_entries le 
+            JOIN users u ON le.student_id = u.id 
+            WHERE le.latitude IS NOT NULL AND le.longitude IS NOT NULL
+            ORDER BY le.date DESC, le.time DESC 
+            LIMIT ?
+        ");
+        $stmt->execute([$limit]);
+        return $stmt->fetchAll();
+    }
+    
+    public static function getActiveStudents($pdo) {
+        $stmt = $pdo->prepare("
+            SELECT DISTINCT u.id, u.full_name, u.matric_number, u.department, u.workplace_name, u.workplace_latitude, u.workplace_longitude,
+                   MAX(le.date) as last_activity_date,
+                   MAX(le.time) as last_activity_time,
+                   le.latitude as last_latitude,
+                   le.longitude as last_longitude,
+                   le.activity_description as last_activity
+            FROM users u
+            LEFT JOIN log_entries le ON u.id = le.student_id AND le.latitude IS NOT NULL AND le.longitude IS NOT NULL
+            WHERE u.role = 'student'
+            GROUP BY u.id
+            HAVING last_activity_date IS NOT NULL
+            ORDER BY last_activity_date DESC, last_activity_time DESC
+        ");
+        $stmt->execute();
+        return $stmt->fetchAll();
+    }

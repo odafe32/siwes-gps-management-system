@@ -1,4 +1,5 @@
 # XAMP Setup for SIWES Project
+<!-- php -S localhost:8080 -t "C:\Users\USER\OneDrive\Documents\SIWES"  to start // -->
 
 ## ✅ Database Successfully Created
 

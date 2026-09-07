@@ -12,48 +12,68 @@ class User {
         return $stmt->fetch();
     }
     
+    public static function getStudentsForSupervisor($pdo, $supervisorId) {
+        $stmt = $pdo->prepare("
+            SELECT id, username, email, matric_number, student_id, department, institution, 
+                   siwes_start_date, siwes_end_date, workplace_name 
+            FROM users 
+            WHERE role = 'student' AND supervisor_id = ?
+        ");
+        $stmt->execute([$supervisorId]);
+        return $stmt->fetchAll();
+    }
+    
     public static function create($pdo, $data) {
-        $stmt = $pdo->prepare("INSERT INTO users (name, email, matric_number, department, institution, password_hash, role) VALUES (?, ?, ?, ?, ?, ?, ?)");
+        $stmt = $pdo->prepare("INSERT INTO users (username, email, matric_number, student_id, department, institution, siwes_start_date, siwes_end_date, workplace_name, password, role) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
         return $stmt->execute([
             $data['name'], 
             $data['email'], 
-            $data['matric_number'], 
-            $data['department'],
-            $data['institution'], 
+            $data['matric_number'] ?? null, 
+            $data['student_id'] ?? null,
+            $data['department'] ?? null,
+            $data['institution'] ?? null, 
+            $data['siwes_start_date'] ?? null,
+            $data['siwes_end_date'] ?? null,
+            $data['workplace_name'] ?? null,
             password_hash($data['password'], PASSWORD_DEFAULT), 
             $data['role']
         ]);
     }
     
     public static function getAllStudents($pdo) {
-        $stmt = $pdo->prepare("SELECT id, name, email, matric_number, department, institution FROM users WHERE role = 'student'");
+        $stmt = $pdo->prepare("SELECT id, username, email, matric_number, student_id, department, institution, siwes_start_date, siwes_end_date, workplace_name, is_active FROM users WHERE role = 'student'");
         $stmt->execute();
         return $stmt->fetchAll();
     }
     
     public static function getAllSupervisors($pdo) {
-        $stmt = $pdo->prepare("SELECT id, name, email, department, institution FROM users WHERE role = 'supervisor'");
+        $stmt = $pdo->prepare("SELECT id, username, email, department, institution FROM users WHERE role = 'supervisor'");
         $stmt->execute();
         return $stmt->fetchAll();
     }
     
     public static function updateProfile($pdo, $userId, $data) {
-        $stmt = $pdo->prepare("UPDATE users SET name = ?, email = ?, department = ?, institution = ? WHERE id = ?");
+        $stmt = $pdo->prepare("UPDATE users SET username = ?, email = ?, matric_number = ?, student_id = ?, department = ?, institution = ?, siwes_start_date = ?, siwes_end_date = ?, workplace_name = ? WHERE id = ?");
         return $stmt->execute([
             $data['name'],
             $data['email'],
-            $data['department'],
-            $data['institution'],
+            $data['matric_number'] ?? null,
+            $data['student_id'] ?? null,
+            $data['department'] ?? null,
+            $data['institution'] ?? null,
+            $data['siwes_start_date'] ?? null,
+            $data['siwes_end_date'] ?? null,
+            $data['workplace_name'] ?? null,
             $userId
         ]);
     }
     
     public static function changePassword($pdo, $userId, $newPassword) {
-        $stmt = $pdo->prepare("UPDATE users SET password_hash = ? WHERE id = ?");
+        $stmt = $pdo->prepare("UPDATE users SET password = ? WHERE id = ?");
         return $stmt->execute([
             password_hash($newPassword, PASSWORD_DEFAULT),
             $userId
         ]);
     }
 }
-?> 
+?>

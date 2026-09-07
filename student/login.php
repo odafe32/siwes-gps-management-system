@@ -3,10 +3,36 @@ session_start();
 require_once '../backend/config/db.php';
 require_once '../backend/config/session.php';
 
-// Check if user is already logged in
-if (isset($_SESSION['user_id']) && $_SESSION['role'] === 'student') {
-    header('Location: dashboard.php');
-    exit();
+$error = '';
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // Safely get form data with proper validation
+    $matric_number = isset($_POST['matric_number']) ? trim($_POST['matric_number']) : '';
+    $password = isset($_POST['password']) ? $_POST['password'] : '';
+    
+    if (empty($matric_number) || empty($password)) {
+        $error = 'Please fill in all fields.';
+    } else {
+        try {
+            $stmt = $pdo->prepare("SELECT * FROM users WHERE matric_number = ? AND role = 'student'");
+            $stmt->execute([$matric_number]);
+            $user = $stmt->fetch();
+            
+            if ($user && password_verify($password, $user['password'])) {
+                $_SESSION['user_id'] = $user['id'];
+                
+                $_SESSION['name'] = $user['username'] ?? 'Student';
+                $_SESSION['role'] = $user['role'];
+                header('Location: dashboard.php');
+                exit();
+            } else {
+                $error = 'Invalid matric number or password.';
+            }
+        } catch (PDOException $e) {
+            $error = 'Login failed. Please try again.';
+            error_log("Login error: " . $e->getMessage());
+        }
+    }
 }
 ?>
 <!DOCTYPE html>
@@ -17,34 +43,12 @@ if (isset($_SESSION['user_id']) && $_SESSION['role'] === 'student') {
     <title>Student Login - SIWES Logbook</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="assets/student-styles.css">
+    
     <style>
-        :root {
-            --nsuk-primary: #1a4d2e;
-            --nsuk-secondary: #2d5a3d;
-            --nsuk-accent: #4a7c59;
-            --nsuk-gold: #d4af37;
-            --nsuk-cream: #f8f6f0;
-            --nsuk-dark: #0f2b1a;
-            --nsuk-light: #e8f5e8;
-            --text-primary: #2c3e50;
-            --text-secondary: #6c757d;
-            --gradient-primary: linear-gradient(135deg, #1a4d2e 0%, #2d5a3d 50%, #4a7c59 100%);
-            --gradient-secondary: linear-gradient(135deg, #d4af37 0%, #f4d03f 100%);
-            --shadow-soft: 0 10px 30px rgba(26, 77, 46, 0.1);
-            --shadow-medium: 0 20px 40px rgba(26, 77, 46, 0.15);
-            --shadow-strong: 0 30px 60px rgba(26, 77, 46, 0.2);
-        }
-        
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
         body {
-            font-family: 'Inter', sans-serif;
-            background: var(--gradient-primary);
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
             min-height: 100vh;
             display: flex;
             align-items: center;
@@ -65,157 +69,161 @@ if (isset($_SESSION['user_id']) && $_SESSION['role'] === 'student') {
         }
         
         .login-container {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(20px);
-            border-radius: 30px;
-            box-shadow: var(--shadow-strong);
-            max-width: 500px;
-            width: 100%;
-            border: 1px solid rgba(255, 255, 255, 0.2);
             position: relative;
-            z-index: 2;
+            z-index: 10;
+            width: 100%;
+            max-width: 400px;
+            padding: 2rem;
+        }
+        
+        .login-card {
+            background: white;
+            border-radius: 20px;
+            padding: 2.5rem;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            text-align: center;
+            position: relative;
             overflow: hidden;
         }
         
-        .login-container::before {
+        .login-card::before {
             content: '';
             position: absolute;
             top: 0;
             left: 0;
             right: 0;
-            height: 5px;
-            background: var(--gradient-secondary);
+            height: 4px;
+            background: linear-gradient(90deg, var(--primary-color), var(--accent-color));
         }
         
-        .login-header {
-            background: var(--gradient-primary);
-            color: white;
-            padding: 3rem 2.5rem 2rem;
-            text-align: center;
-            position: relative;
-        }
-        
-        .login-header::after {
-            content: '';
-            position: absolute;
-            bottom: -20px;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 0;
-            height: 0;
-            border-left: 20px solid transparent;
-            border-right: 20px solid transparent;
-            border-top: 20px solid var(--nsuk-primary);
-        }
-        
-        .university-logo {
-            width: 80px;
-            height: 80px;
-            border-radius: 20px;
-            background: rgba(255, 255, 255, 0.2);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin: 0 auto 1.5rem;
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.3);
-        }
-        
-        .login-header h2 {
-            font-weight: 800;
-            font-size: 2rem;
-            margin-bottom: 0.5rem;
-            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
-        }
-        
-        .login-header p {
-            margin-bottom: 0;
-            opacity: 0.9;
-            font-size: 1.1rem;
-        }
-        
-        .login-body {
-            padding: 3rem 2.5rem 2.5rem;
-        }
-        
-        .form-group {
+        .logo-section {
             margin-bottom: 2rem;
         }
         
-        .form-label {
-            font-weight: 600;
-            color: var(--nsuk-primary);
-            margin-bottom: 0.75rem;
-            font-size: 0.95rem;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-        
-        .input-group {
-            position: relative;
-            border-radius: 15px;
-            overflow: hidden;
-            box-shadow: var(--shadow-soft);
-        }
-        
-        .input-group-text {
-            background: var(--gradient-primary);
-            color: white;
-            border: none;
-            padding: 1rem 1.25rem;
-            font-size: 1.1rem;
-        }
-        
-        .form-control {
-            border: none;
-            padding: 1rem 1.25rem;
-            font-size: 1rem;
-            background: white;
-            transition: all 0.3s ease;
-        }
-        
-        .form-control:focus {
-            box-shadow: none;
-            background: #f8f9fa;
-        }
-        
-        .form-control::placeholder {
-            color: var(--text-secondary);
-            opacity: 0.7;
-        }
-        
-        .btn-login {
-            background: var(--gradient-primary);
-            color: white;
-            border: none;
-            border-radius: 15px;
-            padding: 1rem 2.5rem;
-            font-weight: 700;
-            font-size: 1.1rem;
-            transition: all 0.4s ease;
-            box-shadow: var(--shadow-medium);
-            width: 100%;
+        .logo-icon {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
+            border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 10px;
+            margin: 0 auto 1rem;
+            color: white;
+            font-size: 2rem;
+        }
+        
+        .login-title {
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: var(--primary-color);
+            margin-bottom: 0.5rem;
+        }
+        
+        .login-subtitle {
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+        }
+        
+        .form-control {
+            border-radius: 10px;
+            border: 2px solid #e9ecef;
+            padding: 0.75rem 1rem;
+            transition: all 0.3s ease;
+            font-size: 1rem;
+        }
+        
+        .form-control:focus {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 0.2rem rgba(26, 77, 46, 0.25);
+        }
+        
+        .input-group-text {
+            background: transparent;
+            border: 2px solid #e9ecef;
+            border-right: none;
+            color: var(--text-secondary);
+        }
+        
+        .input-group .form-control {
+            border-left: none;
+        }
+        
+        .input-group .form-control:focus + .input-group-text {
+            border-color: var(--primary-color);
+        }
+        
+        .password-toggle {
+            cursor: pointer;
+            background: transparent;
+            border: 2px solid #e9ecef;
+            border-left: none;
+            color: var(--text-secondary);
+        }
+        
+        .password-toggle:hover {
+            color: var(--primary-color);
+        }
+        
+        .btn-login {
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            border: none;
+            border-radius: 10px;
+            padding: 0.75rem 2rem;
+            font-weight: 600;
+            font-size: 1rem;
+            color: white;
+            transition: all 0.3s ease;
+            width: 100%;
         }
         
         .btn-login:hover {
-            transform: translateY(-3px);
-            box-shadow: var(--shadow-strong);
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(26, 77, 46, 0.3);
             color: white;
         }
         
         .btn-login:active {
-            transform: translateY(-1px);
+            transform: translateY(0);
+        }
+        
+        .divider {
+            margin: 1.5rem 0;
+            text-align: center;
+            position: relative;
+        }
+        
+        .divider::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: #e9ecef;
+        }
+        
+        .divider span {
+            background: white;
+            padding: 0 1rem;
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+        }
+        
+        .register-link {
+            color: var(--primary-color);
+            text-decoration: none;
+            font-weight: 600;
+            transition: color 0.3s ease;
+        }
+        
+        .register-link:hover {
+            color: var(--secondary-color);
         }
         
         .alert {
-            border-radius: 15px;
+            border-radius: 10px;
             border: none;
-            padding: 1rem 1.5rem;
-            margin-bottom: 2rem;
             font-weight: 500;
         }
         
@@ -225,175 +233,268 @@ if (isset($_SESSION['user_id']) && $_SESSION['role'] === 'student') {
             border-left: 4px solid #dc3545;
         }
         
-        .alert-success {
-            background: rgba(25, 135, 84, 0.1);
-            color: #198754;
-            border-left: 4px solid #198754;
+        .floating-shapes {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            pointer-events: none;
         }
         
-        .login-footer {
-            text-align: center;
-            padding-top: 2rem;
-            border-top: 1px solid rgba(26, 77, 46, 0.1);
+        .shape {
+            position: absolute;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            animation: float 6s ease-in-out infinite;
         }
         
-        .login-footer p {
-            color: var(--text-secondary);
-            margin-bottom: 1rem;
-            font-size: 0.95rem;
+        .shape:nth-child(1) {
+            width: 80px;
+            height: 80px;
+            top: 20%;
+            left: 10%;
+            animation-delay: 0s;
         }
         
-        .btn-register {
-            background: transparent;
-            color: var(--nsuk-primary);
-            border: 2px solid var(--nsuk-primary);
-            border-radius: 25px;
-            padding: 0.75rem 2rem;
-            font-weight: 600;
-            text-decoration: none;
-            transition: all 0.3s ease;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            margin-bottom: 1.5rem;
+        .shape:nth-child(2) {
+            width: 120px;
+            height: 120px;
+            top: 60%;
+            right: 10%;
+            animation-delay: 2s;
         }
         
-        .btn-register:hover {
-            background: var(--nsuk-primary);
-            color: white;
-            transform: translateY(-2px);
+        .shape:nth-child(3) {
+            width: 60px;
+            height: 60px;
+            bottom: 20%;
+            left: 20%;
+            animation-delay: 4s;
         }
         
-        .back-link {
-            color: var(--nsuk-primary);
-            text-decoration: none;
-            font-weight: 500;
-            transition: all 0.3s ease;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-        }
-        
-        .back-link:hover {
-            color: var(--nsuk-secondary);
-            transform: translateX(-5px);
-        }
-        
-        /* Animations */
-        @keyframes fadeInUp {
-            from {
-                opacity: 0;
-                transform: translateY(30px);
+        @keyframes float {
+            0%, 100% {
+                transform: translateY(0px) rotate(0deg);
             }
-            to {
-                opacity: 1;
-                transform: translateY(0);
+            50% {
+                transform: translateY(-20px) rotate(180deg);
             }
         }
         
-        .fade-in-up {
-            animation: fadeInUp 0.8s ease forwards;
-        }
-        
-        /* Responsive */
-        @media (max-width: 576px) {
+        @media (max-width: 768px) {
             .login-container {
-                margin: 1rem;
-                border-radius: 20px;
+                padding: 1rem;
             }
             
-            .login-header {
-                padding: 2rem 1.5rem 1.5rem;
-            }
-            
-            .login-body {
-                padding: 2rem 1.5rem 1.5rem;
-            }
-            
-            .login-header h2 {
-                font-size: 1.75rem;
+            .login-card {
+                padding: 2rem;
             }
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="row justify-content-center">
-            <div class="col-md-6 col-lg-5">
-                <div class="login-container fade-in-up">
-                    <div class="login-header">
-                        <div class="university-logo">
-                            <img src="../assets/images/logo.jpg" alt="NSUK Logo" style="width: 50px; height: auto;">
-                        </div>
-                        <h2>Student Login</h2>
-                        <p>Access your SIWES logbook</p>
-                    </div>
-                    
-                    <div class="login-body">
-                        <?php if (isset($_GET['error'])): ?>
-                            <div class="alert alert-danger">
-                                <i class="fas fa-exclamation-triangle me-2"></i>
-                                <?php echo htmlspecialchars($_GET['error']); ?>
-                            </div>
-                        <?php endif; ?>
-                        
-                        <?php if (isset($_GET['success'])): ?>
-                            <div class="alert alert-success">
-                                <i class="fas fa-check-circle me-2"></i>
-                                <?php echo htmlspecialchars($_GET['success']); ?>
-                            </div>
-                        <?php endif; ?>
-                        
-                        <form action="../backend/api/auth.php" method="POST">
-                            <input type="hidden" name="action" value="login">
-                            <input type="hidden" name="role" value="student">
-                            
-                            <div class="form-group">
-                                <label for="email" class="form-label">Email Address</label>
-                                <div class="input-group">
-                                    <span class="input-group-text">
-                                        <i class="fas fa-envelope"></i>
-                                    </span>
-                                    <input type="email" class="form-control" id="email" name="email" 
-                                           placeholder="Enter your email address" required>
-                                </div>
-                            </div>
-                            
-                            <div class="form-group">
-                                <label for="password" class="form-label">Password</label>
-                                <div class="input-group">
-                                    <span class="input-group-text">
-                                        <i class="fas fa-lock"></i>
-                                    </span>
-                                    <input type="password" class="form-control" id="password" name="password" 
-                                           placeholder="Enter your password" required>
-                                </div>
-                            </div>
-                            
-                            <button type="submit" class="btn-login">
-                                <i class="fas fa-sign-in-alt"></i>
-                                Login to SIWES
-                            </button>
-                        </form>
-                        
-                        <div class="login-footer">
-                            <p>Don't have an account?</p>
-                            <a href="register.php" class="btn-register">
-                                <i class="fas fa-user-plus"></i>
-                                Register as Student
-                            </a>
-                            <br>
-                            <a href="../index.php" class="back-link">
-                                <i class="fas fa-arrow-left"></i>
-                                Back to Home
-                            </a>
-                        </div>
+    <!-- Floating shapes for background -->
+    <div class="floating-shapes">
+        <div class="shape"></div>
+        <div class="shape"></div>
+        <div class="shape"></div>
+    </div>
+    
+    <div class="login-container">
+        <div class="login-card">
+            <div class="logo-section">
+                <div class="logo-icon">
+                    <i class="fas fa-graduation-cap"></i>
+                </div>
+                <h1 class="login-title">Student Login</h1>
+                <p class="login-subtitle">Access your SIWES Logbook</p>
+            </div>
+            
+            <?php if ($error): ?>
+                <div class="alert alert-danger mb-3">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <?php echo htmlspecialchars($error); ?>
+                </div>
+            <?php endif; ?>
+            
+            <form method="POST" id="loginForm" action="../backend/api/auth.php">
+                <input type="hidden" id="action" name="action" value="login">
+                <input type="hidden" id="role" name="role" value="student">
+                
+                <div class="mb-3">
+                    <div class="input-group">
+                        <span class="input-group-text">
+                            <i class="fas fa-id-card"></i>
+                        </span>
+                        <input type="text" class="form-control" id="matric_number" name="matric_number" placeholder="Matriculation Number" required>
                     </div>
                 </div>
+                
+                <div class="mb-4">
+                    <div class="input-group">
+                        <span class="input-group-text">
+                            <i class="fas fa-lock"></i>
+                        </span>
+                        <input type="password" class="form-control" name="password" id="password" placeholder="Password" required>
+                        <span class="input-group-text password-toggle" onclick="togglePassword('password')">
+                            <i class="fas fa-eye"></i>
+                        </span>
+                    </div>
+                </div>
+                
+                <button type="submit" id="loginButton" class="btn btn-login">
+                    <i class="fas fa-sign-in-alt me-2"></i>
+                    Sign In
+                </button>
+            </form>
+            
+            <div class="divider">
+                <span>Don't have an account?</span>
             </div>
+            
+            <p class="text-center mb-0">
+                <a href="register.php" class="register-link">
+                    <i class="fas fa-user-plus me-1"></i>
+                    Create Student Account
+                </a>
+            </p>
         </div>
     </div>
-
+    
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="assets/student-scripts.js"></script>
+    <script>
+        // AJAX Form submission
+        $(document).ready(function() {
+            $('#loginForm').on('submit', function(e) {
+                e.preventDefault();
+                
+                const matric_number = $('#matric_number').val().trim();
+                const password = $('#password').val();
+                
+                if (!matric_number || !password) {
+                    showToast('Please fill in all fields', 'error');
+                    return;
+                }
+                
+                // Disable button and show loading state
+                $('#loginButton').prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-2"></i>Signing In...');
+                
+                // Prepare data in JSON format
+                const formData = {
+                    action: $('#action').val(),
+                    role: $('#role').val(),
+                    matric_number: matric_number,
+                    password: password
+                };
+                
+                // Send AJAX request
+                $.ajax({
+                    url: '../backend/api/auth.php',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify(formData),
+                    success: function(response) {
+                        if (response.success) {
+                            window.location.href = 'dashboard.php';
+                        } else {
+                            const errorMessage = response.message || 'Login failed. Please try again.';
+                            const alertHtml = `
+                                <div class="alert alert-danger mb-3">
+                                    <i class="fas fa-exclamation-triangle me-2"></i>${errorMessage}
+                                </div>
+                            `;
+                            $('.alert').remove();
+                            $('#loginForm').before(alertHtml);
+                            $('#loginButton').prop('disabled', false).html('<i class="fas fa-sign-in-alt me-2"></i>Sign In');
+                        }
+                    },
+                    error: function(xhr) {
+                        let errorMessage = 'Login failed. Please try again.';
+                        
+                        // Try to get error message from response
+                        try {
+                            const response = JSON.parse(xhr.responseText);
+                            if (response && response.message) {
+                                errorMessage = response.message;
+                            }
+                        } catch (e) {}
+                        
+                        // Show error message
+                        const alertHtml = `
+                            <div class="alert alert-danger mb-3">
+                                <i class="fas fa-exclamation-triangle me-2"></i>
+                                ${errorMessage}
+                            </div>
+                        `;
+                        
+                        // Add alert before the form
+                        $('#loginForm').before(alertHtml);
+                        
+                        // Reset button state
+                        $('#loginButton').prop('disabled', false).html('<i class="fas fa-sign-in-alt me-2"></i>Sign In');
+                    }
+                });
+            });
+        });
+        
+        // Toggle password visibility
+        function togglePassword(inputId) {
+            const passwordInput = document.getElementById(inputId);
+            const icon = document.querySelector('.password-toggle i');
+            
+            if (passwordInput.type === 'password') {
+                passwordInput.type = 'text';
+                icon.classList.remove('fa-eye');
+                icon.classList.add('fa-eye-slash');
+            } else {
+                passwordInput.type = 'password';
+                icon.classList.remove('fa-eye-slash');
+                icon.classList.add('fa-eye');
+            }
+        }
+        
+        // Toast function if not defined in student-scripts.js
+        if (typeof showToast !== 'function') {
+            function showToast(message, type = 'info') {
+                const toastContainer = document.getElementById('toastContainer') || createToastContainer();
+                
+                const toast = document.createElement('div');
+                toast.className = `toast toast-${type}`;
+                toast.innerHTML = `
+                    <div class="toast-content">
+                        <i class="fas ${type === 'error' ? 'fa-exclamation-circle' : 'fa-info-circle'}"></i>
+                        <span>${message}</span>
+                    </div>
+                    <button class="toast-close">&times;</button>
+                `;
+                
+                toastContainer.appendChild(toast);
+                
+                // Auto remove after 5 seconds
+                setTimeout(() => {
+                    toast.classList.add('removing');
+                    setTimeout(() => toast.remove(), 300);
+                }, 5000);
+                
+                // Close button
+                toast.querySelector('.toast-close').addEventListener('click', function() {
+                    toast.classList.add('removing');
+                    setTimeout(() => toast.remove(), 300);
+                });
+            }
+            
+            function createToastContainer() {
+                const container = document.createElement('div');
+                container.id = 'toastContainer';
+                container.className = 'toast-container';
+                document.body.appendChild(container);
+                return container;
+            }
+        }
+    </script>
 </body>
-</html> 
+</html>
